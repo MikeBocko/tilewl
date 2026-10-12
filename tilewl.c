@@ -167,6 +167,28 @@ static void killclient(struct tinywl_toplevel *current_toplevel)
 	wlr_xdg_toplevel_send_close(current_toplevel->xdg_toplevel);
 }
 
+static void tile(struct tinywl_server *server)
+{
+
+	struct tinywl_toplevel *toplevel;
+
+	int n = wl_list_length(&server->toplevels);
+
+	if (n == 0)
+	{
+		return;
+	}
+		
+	int i = 0;
+	int width = 1920 / n;
+
+	wl_list_for_each(toplevel, &server->toplevels, link)
+	{
+		wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, 1080);
+		wlr_scene_node_set_position(&toplevel->scene_tree->node, width * i, 0);
+		i++;
+	}
+}
 
 static void keyboard_handle_modifiers(
 		struct wl_listener *listener, void *data) {
@@ -215,13 +237,8 @@ static bool handle_keybinding(struct tinywl_server *server, xkb_keysym_t sym) {
 	case XKB_KEY_e:
 		spawn(browsercmd);
 		break;
-	case XKB_KEY_F1:
-		/* Cycle to the next toplevel */
-		if (wl_list_length(&server->toplevels) < 2) {
-			break;
-		}
-		struct tinywl_toplevel *next_toplevel = wl_container_of(server->toplevels.prev, next_toplevel, link);
-		focus_toplevel(next_toplevel);
+	case XKB_KEY_r:
+		tile(server);
 		break;
 	default:
 		return false;
@@ -278,8 +295,7 @@ static void keyboard_handle_destroy(struct wl_listener *listener, void *data) {
 	free(keyboard);
 }
 
-static void server_new_keyboard(struct tinywl_server *server,
-		struct wlr_input_device *device) {
+static void server_new_keyboard(struct tinywl_server *server, struct wlr_input_device *device) {
 	struct wlr_keyboard *wlr_keyboard = wlr_keyboard_from_input_device(device);
 
 	struct tinywl_keyboard *keyboard = calloc(1, sizeof(*keyboard));
@@ -311,8 +327,7 @@ static void server_new_keyboard(struct tinywl_server *server,
 	wl_list_insert(&server->keyboards, &keyboard->link);
 }
 
-static void server_new_pointer(struct tinywl_server *server,
-		struct wlr_input_device *device) {
+static void server_new_pointer(struct tinywl_server *server, struct wlr_input_device *device) {
 	/* We don't do anything special with pointers. All of our pointer handling
 	 * is proxied through wlr_cursor. On another compositor, you might take this
 	 * opportunity to do libinput configuration on the device to set
@@ -708,6 +723,7 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 	wl_list_insert(&toplevel->server->toplevels, &toplevel->link);
 
 	focus_toplevel(toplevel);
+	tile(toplevel->server);
 }
 
 static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
@@ -720,6 +736,7 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
 	}
 
 	wl_list_remove(&toplevel->link);
+	tile(toplevel->server);
 }
 
 static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
