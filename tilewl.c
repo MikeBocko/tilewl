@@ -162,6 +162,11 @@ static void spawn(const char *cmd[])
 	}
 }
 
+static void killclient(struct tinywl_toplevel *current_toplevel)
+{
+	wlr_xdg_toplevel_send_close(current_toplevel->xdg_toplevel);
+}
+
 
 static void keyboard_handle_modifiers(
 		struct wl_listener *listener, void *data) {
@@ -194,6 +199,16 @@ static bool handle_keybinding(struct tinywl_server *server, xkb_keysym_t sym) {
 	 * This function assumes Alt is held down.
 	 */
 	switch (sym) {
+	case XKB_KEY_c:
+
+		if (wl_list_empty(&server->toplevels)) {
+			break;
+		}
+		
+		struct tinywl_toplevel *current_toplevel = wl_container_of(server->toplevels.next, current_toplevel, link);
+
+		killclient(current_toplevel);
+		break;
 	case XKB_KEY_q:
 		spawn(termcmd);
 		break;
@@ -205,8 +220,7 @@ static bool handle_keybinding(struct tinywl_server *server, xkb_keysym_t sym) {
 		if (wl_list_length(&server->toplevels) < 2) {
 			break;
 		}
-		struct tinywl_toplevel *next_toplevel =
-			wl_container_of(server->toplevels.prev, next_toplevel, link);
+		struct tinywl_toplevel *next_toplevel = wl_container_of(server->toplevels.prev, next_toplevel, link);
 		focus_toplevel(next_toplevel);
 		break;
 	default:
