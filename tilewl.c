@@ -65,6 +65,8 @@ struct tinywl_output {
 	struct wl_listener frame;
 	struct wl_listener request_state;
 	struct wl_listener destroy;
+
+	int active_workspace;
 };
 
 struct tinywl_toplevel {
@@ -78,6 +80,9 @@ struct tinywl_toplevel {
 	struct wl_listener destroy;
 	struct wl_listener request_maximize;
 	struct wl_listener request_fullscreen;
+
+	struct tinywl_output *output;
+	int workspace;
 };
 
 struct tinywl_popup {
@@ -153,35 +158,62 @@ static void killclient(struct tinywl_toplevel *current_toplevel)
 	wlr_xdg_toplevel_send_close(current_toplevel->xdg_toplevel);
 }
 
-static void tile(struct tinywl_server *server)
+static void tile_output(struct tinywl_server *server, struct tinywl_output *output)
 {
-
 	struct tinywl_toplevel *toplevel;
 
-	int n = wl_list_length(&server->toplevels);
+	int n = 0;
+
+	wl_list_for_each(toplevel, &server->toplevels, link)
+	{
+		if(toplevel->output == output)
+		{
+			n++;
+		}
+	}
 
 	if (n == 0)
 	{
 		return;
 	}
+
+	double output_x, output_y;
+	wlr_output_layout_output_coords(server->output_layout, output->wlr_output, &output_x, &output_y);
+
+	int width = output->wlr_output->width;
+	int height = output->wlr_output->height;
 		
 	int i = 0;
-	int width = 1920 / n;
 
 	wl_list_for_each(toplevel, &server->toplevels, link)
 	{
-		wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, 1080);
-		wlr_scene_node_set_position(&toplevel->scene_tree->node, width * i, 0);
-		i++;
+		if(toplevel->output == output)
+		{
+			wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width / n, height);
+			wlr_scene_node_set_position(&toplevel->scene_tree->node, (width / n) * i - output_x, 0);
+
+			i++;
+		}
 	}
 }
+
+static void tile(struct tinywl_server *server)
+{
+	struct tinywl_output *output;
+
+	wl_list_for_each(output, &server->outputs, link)
+	{
+		tile_output(server, output);
+	}
+}
+
+
 
 static void keyboard_handle_modifiers(
 		struct wl_listener *listener, void *data) {
 	/* This event is raised when a modifier key, such as shift or alt, is
 	 * pressed. We simply communicate this to the client. */
-	struct tinywl_keyboard *keyboard =
-		wl_container_of(listener, keyboard, modifiers);
+	struct tinywl_keyboard *keyboard = wl_container_of(listener, keyboard, modifiers);
 	/*
 	 * A seat can only have one keyboard, but this is a limitation of the
 	 * Wayland protocol - not wlroots. We assign all connected keyboards to the
@@ -190,8 +222,7 @@ static void keyboard_handle_modifiers(
 	 */
 	wlr_seat_set_keyboard(keyboard->server->seat, keyboard->wlr_keyboard);
 	/* Send modifiers to the client. */
-	wlr_seat_keyboard_notify_modifiers(keyboard->server->seat,
-		&keyboard->wlr_keyboard->modifiers);
+	wlr_seat_keyboard_notify_modifiers(keyboard->server->seat, &keyboard->wlr_keyboard->modifiers);
 }
 
 static bool handle_keybinding(struct tinywl_server *server, xkb_keysym_t sym) {
@@ -222,9 +253,6 @@ static bool handle_keybinding(struct tinywl_server *server, xkb_keysym_t sym) {
 		break;
 	case XKB_KEY_e:
 		spawn(browsercmd);
-		break;
-	case XKB_KEY_r:
-		tile(server);
 		break;
 	default:
 		return false;
@@ -525,8 +553,7 @@ static void output_frame(struct wl_listener *listener, void *data) {
 	struct tinywl_output *output = wl_container_of(listener, output, frame);
 	struct wlr_scene *scene = output->server->scene;
 
-	struct wlr_scene_output *scene_output = wlr_scene_get_scene_output(
-		scene, output->wlr_output);
+	struct wlr_scene_output *scene_output = wlr_scene_get_scene_output(scene, output->wlr_output);
 
 	/* Render the scene if needed and commit the output */
 	wlr_scene_output_commit(scene_output, NULL);
@@ -558,8 +585,7 @@ static void output_destroy(struct wl_listener *listener, void *data) {
 static void server_new_output(struct wl_listener *listener, void *data) {
 	/* This event is raised by the backend when a new output (aka a display or
 	 * monitor) becomes available. */
-	struct tinywl_server *server =
-		wl_container_of(listener, server, new_output);
+	struct tinywl_server *server = wl_container_of(listener, server, new_output);
 	struct wlr_output *wlr_output = data;
 
 	/* Configures the output created by the backend to use our allocator
@@ -587,8 +613,12 @@ static void server_new_output(struct wl_listener *listener, void *data) {
 
 	/* Allocates and configures our state for this output */
 	struct tinywl_output *output = calloc(1, sizeof(*output));
+	
 	output->wlr_output = wlr_output;
 	output->server = server;
+	output->active_workspace = 1;
+
+	wlr_output->data = output;
 
 	/* Sets up a listener for the frame event. */
 	output->frame.notify = output_frame;
@@ -613,8 +643,7 @@ static void server_new_output(struct wl_listener *listener, void *data) {
 	 * display, which Wayland clients can see to find out information about the
 	 * output (such as DPI, scale factor, manufacturer, etc).
 	 */
-	struct wlr_output_layout_output *l_output = wlr_output_layout_add_auto(server->output_layout,
-		wlr_output);
+	struct wlr_output_layout_output *l_output = wlr_output_layout_add_auto(server->output_layout, wlr_output);
 	struct wlr_scene_output *scene_output = wlr_scene_output_create(server->scene, wlr_output);
 	wlr_scene_output_layout_add_output(server->scene_layout, l_output, scene_output);
 }
@@ -699,8 +728,14 @@ static void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
 	struct tinywl_toplevel *toplevel = calloc(1, sizeof(*toplevel));
 	toplevel->server = server;
 	toplevel->xdg_toplevel = xdg_toplevel;
-	toplevel->scene_tree =
-		wlr_scene_xdg_surface_create(&toplevel->server->scene->tree, xdg_toplevel->base);
+	
+	struct wlr_output *wlr_output = wlr_output_layout_output_at(server->output_layout, server->cursor->x, server->cursor->y);
+	struct tinywl_output *output = wlr_output->data;
+
+	toplevel->output = output;
+	toplevel->workspace = toplevel->output->active_workspace;
+
+	toplevel->scene_tree = wlr_scene_xdg_surface_create(&toplevel->server->scene->tree, xdg_toplevel->base);
 	toplevel->scene_tree->node.data = toplevel;
 	xdg_toplevel->base->data = toplevel->scene_tree;
 
