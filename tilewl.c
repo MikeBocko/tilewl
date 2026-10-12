@@ -207,8 +207,6 @@ static void tile(struct tinywl_server *server)
 	}
 }
 
-
-
 static void keyboard_handle_modifiers(
 		struct wl_listener *listener, void *data) {
 	/* This event is raised when a modifier key, such as shift or alt, is
@@ -987,8 +985,6 @@ int main(int argc, char *argv[]) {
 	 * compositor. Starting the backend rigged up all of the necessary event
 	 * loop configuration to listen to libinput events, DRM events, generate
 	 * frame events at the refresh rate, and so on. */
-	wlr_log(WLR_INFO, "Running Wayland compositor on WAYLAND_DISPLAY=%s",
-			socket);
 	wl_display_run(server.wl_display);
 
 
