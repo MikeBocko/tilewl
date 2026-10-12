@@ -25,8 +25,6 @@
 #include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>
 
-/* For brevity's sake, struct members are annotated where they are used. */
-
 struct tinywl_server {
 	struct wl_display *wl_display;
 	struct wlr_backend *backend;
@@ -54,10 +52,6 @@ struct tinywl_server {
 	struct wl_listener pointer_focus_change;
 	struct wl_listener request_set_selection;
 	struct wl_list keyboards;
-	struct tinywl_toplevel *grabbed_toplevel;
-	double grab_x, grab_y;
-	struct wlr_box grab_geobox;
-	uint32_t resize_edges;
 
 	struct wlr_output_layout *output_layout;
 	struct wl_list outputs;
