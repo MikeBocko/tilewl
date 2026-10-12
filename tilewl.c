@@ -641,6 +641,8 @@ static void server_new_output(struct wl_listener *listener, void *data) {
 	 * display, which Wayland clients can see to find out information about the
 	 * output (such as DPI, scale factor, manufacturer, etc).
 	 */
+
+
 	struct wlr_output_layout_output *l_output = wlr_output_layout_add_auto(server->output_layout, wlr_output);
 	struct wlr_scene_output *scene_output = wlr_scene_output_create(server->scene, wlr_output);
 	wlr_scene_output_layout_add_output(server->scene_layout, l_output, scene_output);
@@ -804,7 +806,7 @@ static void server_new_xdg_popup(struct wl_listener *listener, void *data) {
 }
 
 int main(int argc, char *argv[]) {
-	wlr_log_init(WLR_DEBUG, NULL);
+	wlr_log_init(WLR_ERROR, NULL);
 	char *startup_cmd = NULL;
 
 	int c;
