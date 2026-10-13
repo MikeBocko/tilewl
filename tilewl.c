@@ -484,16 +484,14 @@ static void process_cursor_motion(struct tinywl_server *server, uint32_t time) {
 static void server_cursor_motion(struct wl_listener *listener, void *data) {
 	/* This event is forwarded by the cursor when a pointer emits a _relative_
 	 * pointer motion event (i.e. a delta) */
-	struct tinywl_server *server =
-		wl_container_of(listener, server, cursor_motion);
+	struct tinywl_server *server = wl_container_of(listener, server, cursor_motion);
 	struct wlr_pointer_motion_event *event = data;
 	/* The cursor doesn't move unless we tell it to. The cursor automatically
 	 * handles constraining the motion to the output layout, as well as any
 	 * special configuration applied for the specific input device which
 	 * generated the event. You can pass NULL for the device if you want to move
 	 * the cursor around without any input. */
-	wlr_cursor_move(server->cursor, &event->pointer->base,
-			event->delta_x, event->delta_y);
+	wlr_cursor_move(server->cursor, &event->pointer->base, event->delta_x, event->delta_y);
 	process_cursor_motion(server, event->time_msec);
 }
 
@@ -505,11 +503,9 @@ static void server_cursor_motion_absolute(
 	 * move the mouse over the window. You could enter the window from any edge,
 	 * so we have to warp the mouse there. There is also some hardware which
 	 * emits these events. */
-	struct tinywl_server *server =
-		wl_container_of(listener, server, cursor_motion_absolute);
+	struct tinywl_server *server = wl_container_of(listener, server, cursor_motion_absolute);
 	struct wlr_pointer_motion_absolute_event *event = data;
-	wlr_cursor_warp_absolute(server->cursor, &event->pointer->base, event->x,
-		event->y);
+	wlr_cursor_warp_absolute(server->cursor, &event->pointer->base, event->x, event->y);
 	process_cursor_motion(server, event->time_msec);
 }
 
