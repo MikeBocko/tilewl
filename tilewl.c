@@ -257,23 +257,17 @@ static void keyboard_handle_modifiers(struct wl_listener *listener, void *data) 
 
 static bool handle_keybinding(struct tinywl_server *server, xkb_keysym_t sym) {
 
-	static const char *browsercmd[] = {"firefox", NULL};
 	static const char *termcmd[] = {"foot", NULL};
-
-	/*
-	 * Here we handle compositor keybindings. This is when the compositor is
-	 * processing keys, rather than passing them on to the client for its own
-	 * processing.
-	 *
-	 * This function assumes Alt is held down.
-	 */
+	static const char *browsercmd[] = {"firefox", NULL};
+	static const char *steamcmd[] = {"steam", NULL};
 	
 	switch (sym) 
 	{
-		case XKB_KEY_c:				killclient(server);	break;
 		case XKB_KEY_q:				spawn(termcmd);		break;
 		case XKB_KEY_e:				spawn(browsercmd); 	break;
+		case XKB_KEY_s:				spawn(steamcmd); 	break;
 
+		case XKB_KEY_c:				killclient(server);	break;
 
 		case XKB_KEY_1: 			switch_workspace(server, 1); break;
 		case XKB_KEY_2: 			switch_workspace(server, 2); break;
@@ -284,7 +278,6 @@ static bool handle_keybinding(struct tinywl_server *server, xkb_keysym_t sym) {
 		case XKB_KEY_7: 			switch_workspace(server, 7); break;
 		case XKB_KEY_8: 			switch_workspace(server, 8); break;
 		case XKB_KEY_9: 			switch_workspace(server, 9); break;
-
 
 		case XKB_KEY_exclam:		switch_toplevel_workspace(server, 1); break;
 		case XKB_KEY_at: 			switch_toplevel_workspace(server, 2); break;
