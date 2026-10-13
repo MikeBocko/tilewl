@@ -153,9 +153,9 @@ static void spawn(const char *cmd[])
 	}
 }
 
-static void killclient(struct tinywl_toplevel *current_toplevel)
+static void killclient(struct tinywl_toplevel *toplevel)
 {
-	wlr_xdg_toplevel_send_close(current_toplevel->xdg_toplevel);
+	wlr_xdg_toplevel_send_close(toplevel->xdg_toplevel);
 }
 
 static void tile(struct tinywl_server *server, struct tinywl_output *output)
@@ -168,7 +168,15 @@ static void tile(struct tinywl_server *server, struct tinywl_output *output)
 	{
 		if(toplevel->output == output)
 		{
-			n++;
+			if(toplevel->workspace == output->active_workspace)
+			{
+				wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
+				n++;
+			}
+			else
+			{
+				wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
+			}
 		}
 	}
 
@@ -187,7 +195,7 @@ static void tile(struct tinywl_server *server, struct tinywl_output *output)
 
 	wl_list_for_each(toplevel, &server->toplevels, link)
 	{
-		if(toplevel->output == output)
+		if(toplevel->output == output && toplevel->workspace == output->active_workspace)
 		{
 			wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width / n, height);
 			wlr_scene_node_set_position(&toplevel->scene_tree->node, (width / n) * i - output_x, 0);
@@ -195,6 +203,20 @@ static void tile(struct tinywl_server *server, struct tinywl_output *output)
 			i++;
 		}
 	}
+}
+
+static void switch_workspace(struct tinywl_output *output, int workspace)
+{
+	output->active_workspace = workspace;
+
+	tile(output->server, output);
+}
+
+static void change_toplevel_workspace(struct tinywl_toplevel *toplevel, int workspace)
+{
+	toplevel->workspace = workspace;
+
+	tile(toplevel->server, toplevel->output);
 }
 
 static void keyboard_handle_modifiers(
