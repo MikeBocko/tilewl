@@ -153,8 +153,17 @@ static void spawn(const char *cmd[])
 	}
 }
 
-static void killclient(struct tinywl_toplevel *toplevel)
+static void killclient(struct tinywl_server *server)
 {
+
+	if (wl_list_empty(&server->toplevels))
+	{
+		return;
+	}
+
+	struct tinywl_toplevel *toplevel = wl_container_of(server->toplevels.next, toplevel, link);
+		
+
 	wlr_xdg_toplevel_send_close(toplevel->xdg_toplevel);
 }
 
@@ -205,11 +214,15 @@ static void tile(struct tinywl_server *server, struct tinywl_output *output)
 	}
 }
 
-static void switch_workspace(struct tinywl_output *output, int workspace)
+static void switch_workspace(struct tinywl_server *server, int workspace)
 {
+
+	struct wlr_output *wlr_output = wlr_output_layout_output_at(server->output_layout, server->cursor->x, server->cursor->y);
+	struct tinywl_output *output = wlr_output->data;
+
 	output->active_workspace = workspace;
 
-	tile(output->server, output);
+	tile(server, output);
 }
 
 static void change_toplevel_workspace(struct tinywl_toplevel *toplevel, int workspace)
@@ -247,16 +260,16 @@ static bool handle_keybinding(struct tinywl_server *server, xkb_keysym_t sym) {
 	 *
 	 * This function assumes Alt is held down.
 	 */
+
+	if(sym >= XKB_KEY_1 && sym <= XKB_KEY_9)
+	{
+		switch_workspace(server, sym - XKB_KEY_0);
+		return true;
+	}
+	
 	switch (sym) {
 	case XKB_KEY_c:
-
-		if (wl_list_empty(&server->toplevels)) {
-			break;
-		}
-		
-		struct tinywl_toplevel *current_toplevel = wl_container_of(server->toplevels.next, current_toplevel, link);
-
-		killclient(current_toplevel);
+		killclient(server);
 		break;
 	case XKB_KEY_q:
 		spawn(termcmd);
