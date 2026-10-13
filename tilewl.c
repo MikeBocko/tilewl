@@ -225,15 +225,22 @@ static void switch_workspace(struct tinywl_server *server, int workspace)
 	tile(server, output);
 }
 
-static void change_toplevel_workspace(struct tinywl_toplevel *toplevel, int workspace)
+static void switch_toplevel_workspace(struct tinywl_server *server, int workspace)
 {
+
+	if (wl_list_empty(&server->toplevels))
+	{
+		return;
+	}
+
+	struct tinywl_toplevel *toplevel = wl_container_of(server->toplevels.next, toplevel, link);
+
 	toplevel->workspace = workspace;
 
 	tile(toplevel->server, toplevel->output);
 }
 
-static void keyboard_handle_modifiers(
-		struct wl_listener *listener, void *data) {
+static void keyboard_handle_modifiers(struct wl_listener *listener, void *data) {
 	/* This event is raised when a modifier key, such as shift or alt, is
 	 * pressed. We simply communicate this to the client. */
 	struct tinywl_keyboard *keyboard = wl_container_of(listener, keyboard, modifiers);
@@ -260,25 +267,36 @@ static bool handle_keybinding(struct tinywl_server *server, xkb_keysym_t sym) {
 	 *
 	 * This function assumes Alt is held down.
 	 */
-
-	if(sym >= XKB_KEY_1 && sym <= XKB_KEY_9)
-	{
-		switch_workspace(server, sym - XKB_KEY_0);
-		return true;
-	}
 	
-	switch (sym) {
-	case XKB_KEY_c:
-		killclient(server);
-		break;
-	case XKB_KEY_q:
-		spawn(termcmd);
-		break;
-	case XKB_KEY_e:
-		spawn(browsercmd);
-		break;
-	default:
-		return false;
+	switch (sym) 
+	{
+		case XKB_KEY_c:				killclient(server);	break;
+		case XKB_KEY_q:				spawn(termcmd);		break;
+		case XKB_KEY_e:				spawn(browsercmd); 	break;
+
+
+		case XKB_KEY_1: 			switch_workspace(server, 1); break;
+		case XKB_KEY_2: 			switch_workspace(server, 2); break;
+		case XKB_KEY_3: 			switch_workspace(server, 3); break;
+		case XKB_KEY_4: 			switch_workspace(server, 4); break;
+		case XKB_KEY_5: 			switch_workspace(server, 5); break;
+		case XKB_KEY_6: 			switch_workspace(server, 6); break;
+		case XKB_KEY_7: 			switch_workspace(server, 7); break;
+		case XKB_KEY_8: 			switch_workspace(server, 8); break;
+		case XKB_KEY_9: 			switch_workspace(server, 9); break;
+
+
+		case XKB_KEY_exclam:		switch_toplevel_workspace(server, 1); break;
+		case XKB_KEY_at: 			switch_toplevel_workspace(server, 2); break;
+		case XKB_KEY_numbersign: 	switch_toplevel_workspace(server, 3); break;
+		case XKB_KEY_dollar: 		switch_toplevel_workspace(server, 4); break;
+		case XKB_KEY_percent: 		switch_toplevel_workspace(server, 5); break;
+		case XKB_KEY_asciicircum: 	switch_toplevel_workspace(server, 6); break;
+		case XKB_KEY_ampersand: 	switch_toplevel_workspace(server, 7); break;
+		case XKB_KEY_asterisk: 		switch_toplevel_workspace(server, 8); break;
+		case XKB_KEY_parenleft: 	switch_toplevel_workspace(server, 9); break;
+
+		default: return false;
 	}
 	return true;
 }
@@ -301,8 +319,7 @@ static void keyboard_handle_key(
 
 	bool handled = false;
 	uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
-	if ((modifiers & WLR_MODIFIER_ALT) &&
-			event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+	if ((modifiers & WLR_MODIFIER_ALT) && event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
 		/* If alt is held down and this button was _pressed_, we attempt to
 		 * process it as a compositor keybinding. */
 		for (int i = 0; i < nsyms; i++) {
@@ -679,6 +696,7 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 
 	tile(toplevel->server, toplevel->output);
 }
+
 static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
 	/* Called when the surface is unmapped, and should no longer be shown. */
 	struct tinywl_toplevel *toplevel = wl_container_of(listener, toplevel, unmap);
