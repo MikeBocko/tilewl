@@ -158,7 +158,7 @@ static void killclient(struct tinywl_toplevel *current_toplevel)
 	wlr_xdg_toplevel_send_close(current_toplevel->xdg_toplevel);
 }
 
-static void tile_output(struct tinywl_server *server, struct tinywl_output *output)
+static void tile(struct tinywl_server *server, struct tinywl_output *output)
 {
 	struct tinywl_toplevel *toplevel;
 
@@ -194,16 +194,6 @@ static void tile_output(struct tinywl_server *server, struct tinywl_output *outp
 
 			i++;
 		}
-	}
-}
-
-static void tile(struct tinywl_server *server)
-{
-	struct tinywl_output *output;
-
-	wl_list_for_each(output, &server->outputs, link)
-	{
-		tile_output(server, output);
 	}
 }
 
@@ -651,15 +641,17 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 	wl_list_insert(&toplevel->server->toplevels, &toplevel->link);
 
 	focus_toplevel(toplevel);
-	tile(toplevel->server);
-}
 
+	tile(toplevel->server, toplevel->output);
+}
 static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
 	/* Called when the surface is unmapped, and should no longer be shown. */
 	struct tinywl_toplevel *toplevel = wl_container_of(listener, toplevel, unmap);
+	
 
 	wl_list_remove(&toplevel->link);
-	tile(toplevel->server);
+
+	tile(toplevel->server, toplevel->output);
 }
 
 static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
