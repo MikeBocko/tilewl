@@ -62,7 +62,6 @@ struct tinywl_server {
 
 	//xwayland
 	struct wlr_xwayland *xwayland;
-	struct wl_listener xwayland_ready;
 	struct wl_listener new_xwayland_surface;
 };
 
@@ -86,7 +85,6 @@ struct tinywl_toplevel {
 	struct wl_listener unmap;
 	struct wl_listener commit;
 	struct wl_listener destroy;
-	struct wl_listener request_maximize;
 	struct wl_listener request_fullscreen;
 
 	struct tinywl_output *output;
@@ -260,12 +258,12 @@ static void tile(struct tinywl_server *server, struct tinywl_output *output)
 		{
 			if(toplevel->xwayland_surface != NULL)
 			{
-				wlr_xwayland_surface_configure(toplevel->xwayland_surface, width / n * i, 0, width / n, height);
+				wlr_xwayland_surface_configure(toplevel->xwayland_surface, width / n * i, output_y, width / n, height);
 			}
 			else
 			{
 				wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width / n, height);
-				wlr_scene_node_set_position(&toplevel->scene_tree->node, (width / n) * i - output_x, 0);
+				wlr_scene_node_set_position(&toplevel->scene_tree->node, (width / n) * i - output_x, output_y);
 			}
 
 			i++;
@@ -766,26 +764,9 @@ static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
 	wl_list_remove(&toplevel->unmap.link);
 	wl_list_remove(&toplevel->commit.link);
 	wl_list_remove(&toplevel->destroy.link);
-	wl_list_remove(&toplevel->request_maximize.link);
 	wl_list_remove(&toplevel->request_fullscreen.link);
 
 	free(toplevel);
-}
-
-static void xdg_toplevel_request_maximize(
-		struct wl_listener *listener, void *data) {
-	/* This event is raised when a client would like to maximize itself,
-	 * typically because the user clicked on the maximize button on client-side
-	 * decorations. tinywl doesn't support maximization, but to conform to
-	 * xdg-shell protocol we still must send a configure.
-	 * wlr_xdg_surface_schedule_configure() is used to send an empty reply.
-	 * However, if the request was sent before an initial commit, we don't do
-	 * anything and let the client finish the initial surface setup. */
-	struct tinywl_toplevel *toplevel =
-		wl_container_of(listener, toplevel, request_maximize);
-	if (toplevel->xdg_toplevel->base->initialized) {
-		wlr_xdg_surface_schedule_configure(toplevel->xdg_toplevel->base);
-	}
 }
 
 static void xdg_toplevel_request_fullscreen(
@@ -830,8 +811,6 @@ static void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
 	wl_signal_add(&xdg_toplevel->events.destroy, &toplevel->destroy);
 
 	/* cotd */
-	toplevel->request_maximize.notify = xdg_toplevel_request_maximize;
-	wl_signal_add(&xdg_toplevel->events.request_maximize, &toplevel->request_maximize);
 	toplevel->request_fullscreen.notify = xdg_toplevel_request_fullscreen;
 	wl_signal_add(&xdg_toplevel->events.request_fullscreen, &toplevel->request_fullscreen);
 }
@@ -922,18 +901,11 @@ static void xwayland_destroy(struct wl_listener *listener, void *data)
 	/* Called when the xwayland window is destroyed. */
 	struct tinywl_toplevel *toplevel = wl_container_of(listener, toplevel, xwayland_destroy);
 
-
 	wl_list_remove(&toplevel->associate.link);
 	wl_list_remove(&toplevel->dissociate.link);
 	wl_list_remove(&toplevel->xwayland_destroy.link);
 
-	
 	free(toplevel);
-}
-
-static void xwayland_ready(struct wl_listener *listener, void *data)
-{
-	struct tinywl_server *server = wl_container_of(listener, server, xwayland_ready);
 }
 
 static void server_new_xwayland_surface(struct wl_listener *listener, void *data)
@@ -1163,9 +1135,6 @@ int main(int argc, char *argv[]) {
 	}
 
 	setenv("DISPLAY", server.xwayland->display_name, true);
-
-	server.xwayland_ready.notify = xwayland_ready;
-	wl_signal_add(&server.xwayland->events.ready, &server.xwayland_ready);
 
 	server.new_xwayland_surface.notify = server_new_xwayland_surface;
 	wl_signal_add(&server.xwayland->events.new_surface, &server.new_xwayland_surface);
