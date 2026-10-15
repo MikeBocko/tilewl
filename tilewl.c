@@ -244,13 +244,17 @@ static void tile(struct tinywl_server *server, struct tinywl_output *output)
 		return;
 	}
 
-	double output_x, output_y;
-	wlr_output_layout_output_coords(server->output_layout, output->wlr_output, &output_x, &output_y);
+	struct wlr_output_layout_output *lo = wlr_output_layout_get(server->output_layout, output->wlr_output);
+
+	int output_x = lo->x;
+	int output_y = lo->y;
 
 	int width = output->wlr_output->width;
 	int height = output->wlr_output->height;
 		
 	int i = 0;
+
+	int size_x = width / n;
 
 	wl_list_for_each(toplevel, &server->toplevels, link)
 	{
@@ -258,13 +262,14 @@ static void tile(struct tinywl_server *server, struct tinywl_output *output)
 		{
 			if(toplevel->xwayland_surface != NULL)
 			{
-				wlr_xwayland_surface_configure(toplevel->xwayland_surface, width / n * i, output_y, width / n, height);
+				wlr_xwayland_surface_configure(toplevel->xwayland_surface, 0, 0, size_x, height);	
 			}
 			else
 			{
-				wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width / n, height);
-				wlr_scene_node_set_position(&toplevel->scene_tree->node, (width / n) * i - output_x, output_y);
+				wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, size_x, height);
 			}
+			
+			wlr_scene_node_set_position(&toplevel->scene_tree->node, output_x + size_x * i , output_y);
 
 			i++;
 		}
