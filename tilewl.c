@@ -25,6 +25,9 @@
 #include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>
 
+#include <wlr/types/wlr_relative_pointer_v1.h>
+#include <wlr/types/wlr_pointer_constraints_v1.h>
+
 //xwayland
 #include <wlr/xwayland.h>
 
@@ -59,6 +62,9 @@ struct tinywl_server {
 	struct wlr_output_layout *output_layout;
 	struct wl_list outputs;
 	struct wl_listener new_output;
+
+	//relative pointer
+	struct wlr_relative_pointer_manager_v1 *relative_pointer_manager;
 
 	//xwayland
 	struct wlr_xwayland *xwayland;
@@ -609,6 +615,18 @@ static void server_cursor_motion(struct wl_listener *listener, void *data) {
 	 * generated the event. You can pass NULL for the device if you want to move
 	 * the cursor around without any input. */
 	wlr_cursor_move(server->cursor, &event->pointer->base, event->delta_x, event->delta_y);
+
+
+	wlr_relative_pointer_manager_v1_send_relative_motion(
+		server->relative_pointer_manager,
+		server->seat,
+		(uint64_t)event->time_msec * 1000,
+		event->delta_x,
+		event->delta_y,
+		event->unaccel_dx,
+		event->unaccel_dy
+	);
+
 	process_cursor_motion(server, event->time_msec);
 }
 
@@ -1178,6 +1196,7 @@ int main(int argc, char *argv[]) {
 	wl_signal_add(&server.xwayland->events.new_surface, &server.new_xwayland_surface);
 	//end xwayland
 
+	server.relative_pointer_manager = wlr_relative_pointer_manager_v1_create(server.wl_display);
 	wl_display_run(server.wl_display);
 
 
