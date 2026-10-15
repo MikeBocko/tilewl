@@ -25,6 +25,9 @@
 #include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>
 
+//xwayland
+#include <wlr/xwayland.h>
+
 struct tinywl_server {
 	struct wl_display *wl_display;
 	struct wlr_backend *backend;
@@ -56,6 +59,11 @@ struct tinywl_server {
 	struct wlr_output_layout *output_layout;
 	struct wl_list outputs;
 	struct wl_listener new_output;
+
+	//xwayland
+	struct wlr_xwayland *xwayland;
+	struct wl_listener xwayland_ready;
+	struct wl_listener new_xwayland_surface;
 };
 
 struct tinywl_output {
@@ -83,6 +91,12 @@ struct tinywl_toplevel {
 
 	struct tinywl_output *output;
 	int workspace;
+
+	//xwayland
+	struct wlr_xwayland_surface *xwayland_surface;
+	struct wl_listener associate;
+	struct wl_listener dissociate;
+	struct wl_listener xwayland_destroy;
 };
 
 struct tinywl_popup {
@@ -109,7 +123,18 @@ static void focus_toplevel(struct tinywl_toplevel *toplevel) {
 	struct tinywl_server *server = toplevel->server;
 	struct wlr_seat *seat = server->seat;
 	struct wlr_surface *prev_surface = seat->keyboard_state.focused_surface;
-	struct wlr_surface *surface = toplevel->xdg_toplevel->base->surface;
+
+	struct wlr_surface *surface;
+
+	if(toplevel->xwayland_surface != NULL)
+	{
+		surface = toplevel->xwayland_surface->surface;
+	}
+	else
+	{
+		surface = toplevel->xdg_toplevel->base->surface;
+	}
+	
 	if (prev_surface == surface) {
 		/* Don't re-focus an already focused surface. */
 		return;
@@ -120,10 +145,19 @@ static void focus_toplevel(struct tinywl_toplevel *toplevel) {
 		 * it no longer has focus and the client will repaint accordingly, e.g.
 		 * stop displaying a caret.
 		 */
-		struct wlr_xdg_toplevel *prev_toplevel =
-			wlr_xdg_toplevel_try_from_wlr_surface(prev_surface);
-		if (prev_toplevel != NULL) {
+
+		struct wlr_xdg_toplevel *prev_toplevel = wlr_xdg_toplevel_try_from_wlr_surface(prev_surface);
+		if (prev_toplevel != NULL)
+		{
 			wlr_xdg_toplevel_set_activated(prev_toplevel, false);
+		}
+		else
+		{
+			struct wlr_xwayland_surface *prev_xwayland = wlr_xwayland_surface_try_from_wlr_surface(prev_surface);
+			if(prev_xwayland != NULL)
+			{
+				wlr_xwayland_surface_activate(prev_xwayland, false);
+			}
 		}
 	}
 	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
@@ -132,15 +166,24 @@ static void focus_toplevel(struct tinywl_toplevel *toplevel) {
 	wl_list_remove(&toplevel->link);
 	wl_list_insert(&server->toplevels, &toplevel->link);
 	/* Activate the new surface */
-	wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, true);
+	
+	if(toplevel->xwayland_surface != NULL)
+	{
+		wlr_xwayland_surface_activate(toplevel->xwayland_surface, true);
+	}
+	else
+	{
+		wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, true);
+	}
+	
 	/*
 	 * Tell the seat to have the keyboard enter this surface. wlroots will keep
 	 * track of this and automatically send key events to the appropriate
 	 * clients without additional work on your part.
 	 */
-	if (keyboard != NULL) {
-		wlr_seat_keyboard_notify_enter(seat, surface,
-			keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
+	if (keyboard != NULL)
+	{
+		wlr_seat_keyboard_notify_enter(seat, surface, keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
 	}
 }
 
@@ -155,14 +198,23 @@ static void spawn(const char *cmd[])
 
 static void killclient(struct tinywl_server *server)
 {
-
 	if (wl_list_empty(&server->toplevels))
 	{
 		return;
 	}
 
 	struct tinywl_toplevel *toplevel = wl_container_of(server->toplevels.next, toplevel, link);
-		
+
+	//xwayland
+
+	if(toplevel->xwayland_surface != NULL)
+	{
+		wlr_xwayland_surface_close(toplevel->xwayland_surface);
+		return;
+	}
+	
+
+	//wayland
 
 	wlr_xdg_toplevel_send_close(toplevel->xdg_toplevel);
 }
@@ -206,8 +258,15 @@ static void tile(struct tinywl_server *server, struct tinywl_output *output)
 	{
 		if(toplevel->output == output && toplevel->workspace == output->active_workspace)
 		{
-			wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width / n, height);
-			wlr_scene_node_set_position(&toplevel->scene_tree->node, (width / n) * i - output_x, 0);
+			if(toplevel->xwayland_surface != NULL)
+			{
+				wlr_xwayland_surface_configure(toplevel->xwayland_surface, width / n * i, 0, width / n, height);
+			}
+			else
+			{
+				wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width / n, height);
+				wlr_scene_node_set_position(&toplevel->scene_tree->node, (width / n) * i - output_x, 0);
+			}
 
 			i++;
 		}
@@ -274,20 +333,12 @@ static bool handle_keybinding(struct tinywl_server *server, xkb_keysym_t sym) {
 		case XKB_KEY_3: 			switch_workspace(server, 3); break;
 		case XKB_KEY_4: 			switch_workspace(server, 4); break;
 		case XKB_KEY_5: 			switch_workspace(server, 5); break;
-		case XKB_KEY_6: 			switch_workspace(server, 6); break;
-		case XKB_KEY_7: 			switch_workspace(server, 7); break;
-		case XKB_KEY_8: 			switch_workspace(server, 8); break;
-		case XKB_KEY_9: 			switch_workspace(server, 9); break;
 
 		case XKB_KEY_exclam:		switch_toplevel_workspace(server, 1); break;
 		case XKB_KEY_at: 			switch_toplevel_workspace(server, 2); break;
 		case XKB_KEY_numbersign: 	switch_toplevel_workspace(server, 3); break;
 		case XKB_KEY_dollar: 		switch_toplevel_workspace(server, 4); break;
 		case XKB_KEY_percent: 		switch_toplevel_workspace(server, 5); break;
-		case XKB_KEY_asciicircum: 	switch_toplevel_workspace(server, 6); break;
-		case XKB_KEY_ampersand: 	switch_toplevel_workspace(server, 7); break;
-		case XKB_KEY_asterisk: 		switch_toplevel_workspace(server, 8); break;
-		case XKB_KEY_parenleft: 	switch_toplevel_workspace(server, 9); break;
 
 		default: return false;
 	}
@@ -409,12 +460,10 @@ static void server_new_input(struct wl_listener *listener, void *data) {
 }
 
 static void seat_request_cursor(struct wl_listener *listener, void *data) {
-	struct tinywl_server *server = wl_container_of(
-			listener, server, request_cursor);
+	struct tinywl_server *server = wl_container_of(listener, server, request_cursor);
 	/* This event is raised by the seat when a client provides a cursor image */
 	struct wlr_seat_pointer_request_set_cursor_event *event = data;
-	struct wlr_seat_client *focused_client =
-		server->seat->pointer_state.focused_client;
+	struct wlr_seat_client *focused_client = server->seat->pointer_state.focused_client;
 	/* This can be sent by any client, so we check to make sure this one is
 	 * actually has pointer focus first. */
 	if (focused_client == event->seat_client) {
@@ -422,8 +471,7 @@ static void seat_request_cursor(struct wl_listener *listener, void *data) {
 		 * provided surface as the cursor image. It will set the hardware cursor
 		 * on the output that it's currently on and continue to do so as the
 		 * cursor moves between outputs. */
-		wlr_cursor_set_surface(server->cursor, event->surface,
-				event->hotspot_x, event->hotspot_y);
+		wlr_cursor_set_surface(server->cursor, event->surface, event->hotspot_x, event->hotspot_y);
 	}
 }
 
@@ -450,9 +498,7 @@ static void seat_request_set_selection(struct wl_listener *listener, void *data)
 	wlr_seat_set_selection(server->seat, event->source, event->serial);
 }
 
-static struct tinywl_toplevel *desktop_toplevel_at(
-		struct tinywl_server *server, double lx, double ly,
-		struct wlr_surface **surface, double *sx, double *sy) {
+static struct tinywl_toplevel *desktop_toplevel_at(struct tinywl_server *server, double lx, double ly, struct wlr_surface **surface, double *sx, double *sy) {
 	/* This returns the topmost node in the scene at the given layout coords.
 	 * We only care about surface nodes as we are specifically looking for a
 	 * surface in the surface tree of a tinywl_toplevel. */
@@ -530,8 +576,7 @@ static void server_cursor_motion(struct wl_listener *listener, void *data) {
 	process_cursor_motion(server, event->time_msec);
 }
 
-static void server_cursor_motion_absolute(
-		struct wl_listener *listener, void *data) {
+static void server_cursor_motion_absolute(struct wl_listener *listener, void *data) {
 	/* This event is forwarded by the cursor when a pointer emits an _absolute_
 	 * motion event, from 0..1 on each axis. This happens, for example, when
 	 * wlroots is running under a Wayland window rather than KMS+DRM, and you
@@ -839,6 +884,88 @@ static void server_new_xdg_popup(struct wl_listener *listener, void *data) {
 	wl_signal_add(&xdg_popup->events.destroy, &popup->destroy);
 }
 
+
+static void xwayland_associate(struct wl_listener *listener, void *data)
+{
+	struct tinywl_toplevel *toplevel = wl_container_of(listener, toplevel, associate);
+
+	struct wlr_surface *surface = toplevel->xwayland_surface->surface;
+
+	toplevel->scene_tree = wlr_scene_subsurface_tree_create(&toplevel->server->scene->tree, surface);
+	toplevel->scene_tree->node.data = toplevel;
+	toplevel->xwayland_surface->data = toplevel->scene_tree;
+
+	toplevel->map.notify = xdg_toplevel_map;
+	wl_signal_add(&surface->events.map, &toplevel->map);
+
+	toplevel->unmap.notify = xdg_toplevel_unmap;
+	wl_signal_add(&surface->events.unmap, &toplevel->unmap);
+}
+
+static void xwayland_dissociate(struct wl_listener *listener, void *data)
+{
+	struct tinywl_toplevel *toplevel = wl_container_of(listener, toplevel, dissociate);
+
+	wl_list_remove(&toplevel->map.link);
+	wl_list_remove(&toplevel->unmap.link);
+
+	if(toplevel->scene_tree != NULL)
+	{
+		wlr_scene_node_destroy(&toplevel->scene_tree->node);
+		toplevel->scene_tree = NULL;
+	}
+}
+
+
+static void xwayland_destroy(struct wl_listener *listener, void *data) 
+{
+	/* Called when the xwayland window is destroyed. */
+	struct tinywl_toplevel *toplevel = wl_container_of(listener, toplevel, xwayland_destroy);
+
+
+	wl_list_remove(&toplevel->associate.link);
+	wl_list_remove(&toplevel->dissociate.link);
+	wl_list_remove(&toplevel->xwayland_destroy.link);
+
+	
+	free(toplevel);
+}
+
+static void xwayland_ready(struct wl_listener *listener, void *data)
+{
+	struct tinywl_server *server = wl_container_of(listener, server, xwayland_ready);
+}
+
+static void server_new_xwayland_surface(struct wl_listener *listener, void *data)
+{
+	/* This event is raised when a client creates a new xwayland (application window). */
+	struct tinywl_server *server = wl_container_of(listener, server, new_xwayland_surface);
+	struct wlr_xwayland_surface *xwayland_surface = data;
+
+	/* Allocate a tinywl_toplevel for this surface */
+	struct tinywl_toplevel *toplevel = calloc(1, sizeof(*toplevel));
+	toplevel->server = server;
+	toplevel->xwayland_surface = xwayland_surface;
+	
+	struct wlr_output *wlr_output = wlr_output_layout_output_at(server->output_layout, server->cursor->x, server->cursor->y);
+	struct tinywl_output *output = wlr_output->data;
+
+	toplevel->output = output;
+	toplevel->workspace = toplevel->output->active_workspace;
+
+	/* Listen to the various events it can emit */
+
+	toplevel->associate.notify = xwayland_associate;
+	wl_signal_add(&xwayland_surface->events.associate, &toplevel->associate);
+
+
+	toplevel->dissociate.notify = xwayland_dissociate;
+	wl_signal_add(&xwayland_surface->events.dissociate, &toplevel->dissociate);
+
+	toplevel->xwayland_destroy.notify = xwayland_destroy;
+	wl_signal_add(&xwayland_surface->events.destroy, &toplevel->xwayland_destroy);
+}
+
 int main(int argc, char *argv[]) {
 	wlr_log_init(WLR_ERROR, NULL);
 	char *startup_cmd = NULL;
@@ -903,7 +1030,7 @@ int main(int argc, char *argv[]) {
 	 * to dig your fingers in and play with their behavior if you want. Note that
 	 * the clients cannot set the selection directly without compositor approval,
 	 * see the handling of the request_set_selection event below.*/
-	wlr_compositor_create(server.wl_display, 5, server.renderer);
+	struct wlr_compositor *compositor = wlr_compositor_create(server.wl_display, 5, server.renderer);
 	wlr_subcompositor_create(server.wl_display);
 	wlr_data_device_manager_create(server.wl_display);
 
@@ -1021,7 +1148,32 @@ int main(int argc, char *argv[]) {
 	 * compositor. Starting the backend rigged up all of the necessary event
 	 * loop configuration to listen to libinput events, DRM events, generate
 	 * frame events at the refresh rate, and so on. */
+
+
+	//start xwayland
+	server.xwayland = wlr_xwayland_create(
+		server.wl_display,
+		compositor,
+		true
+	);
+
+	if (server.xwayland == NULL) {
+		wlr_log(WLR_ERROR, "failed to create Xwayland");
+		return 1;
+	}
+
+	setenv("DISPLAY", server.xwayland->display_name, true);
+
+	server.xwayland_ready.notify = xwayland_ready;
+	wl_signal_add(&server.xwayland->events.ready, &server.xwayland_ready);
+
+	server.new_xwayland_surface.notify = server_new_xwayland_surface;
+	wl_signal_add(&server.xwayland->events.new_surface, &server.new_xwayland_surface);
+	//end xwayland
+
 	wl_display_run(server.wl_display);
+
+
 
 
 	/* Once wl_display_run returns, we destroy all clients then shut down the
