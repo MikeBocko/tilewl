@@ -194,7 +194,7 @@ static void spawn(const char *cmd[])
 	}
 }
 
-static void killclient(struct tinywl_server *server)
+static void kill_top_level(struct tinywl_server *server)
 {
 	if (wl_list_empty(&server->toplevels))
 	{
@@ -302,6 +302,36 @@ static void switch_toplevel_workspace(struct tinywl_server *server, int workspac
 	tile(toplevel->server, toplevel->output);
 }
 
+
+static void switch_toplevel_output(struct tinywl_server *server)
+{
+
+	if (wl_list_empty(&server->toplevels))
+	{
+		return;
+	}
+
+	struct tinywl_toplevel *toplevel = wl_container_of(server->toplevels.next, toplevel, link);
+
+
+	struct tinywl_output *prev_output = toplevel->output;
+	struct tinywl_output *next_output;
+
+	wl_list_for_each(next_output, &server->outputs, link)
+	{
+		if(next_output != prev_output)
+		{
+			toplevel->output = next_output;
+			toplevel->workspace = next_output->active_workspace;
+
+			tile(toplevel->server, prev_output);
+			tile(toplevel->server, next_output);
+
+			return;
+		}
+	}
+}
+
 static void keyboard_handle_modifiers(struct wl_listener *listener, void *data) {
 	/* This event is raised when a modifier key, such as shift or alt, is
 	 * pressed. We simply communicate this to the client. */
@@ -329,7 +359,7 @@ static bool handle_keybinding(struct tinywl_server *server, xkb_keysym_t sym) {
 		case XKB_KEY_e:				spawn(browsercmd); 	break;
 		case XKB_KEY_s:				spawn(steamcmd); 	break;
 
-		case XKB_KEY_c:				killclient(server);	break;
+		case XKB_KEY_c:				kill_top_level(server);	break;
 
 		case XKB_KEY_1: 			switch_workspace(server, 1); break;
 		case XKB_KEY_2: 			switch_workspace(server, 2); break;
@@ -342,6 +372,9 @@ static bool handle_keybinding(struct tinywl_server *server, xkb_keysym_t sym) {
 		case XKB_KEY_numbersign: 	switch_toplevel_workspace(server, 3); break;
 		case XKB_KEY_dollar: 		switch_toplevel_workspace(server, 4); break;
 		case XKB_KEY_percent: 		switch_toplevel_workspace(server, 5); break;
+
+		case XKB_KEY_grave:			switch_toplevel_output(server); break;
+
 
 		default: return false;
 	}
