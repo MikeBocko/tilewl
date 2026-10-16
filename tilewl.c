@@ -66,10 +66,16 @@ struct tinywl_server {
 	//relative pointer
 	struct wlr_relative_pointer_manager_v1 *relative_pointer_manager;
 
+	struct wlr_pointer_constraints_v1 *wlr_pointer_constraints;
+	struct wlr_pointer_constraint_v1 *active_constraint;
+	struct wl_listener new_pointer_constraint;
+
 	//xwayland
 	struct wlr_xwayland *xwayland;
 	struct wl_listener new_xwayland_surface;
 };
+
+//static struct tinywl_server *server;
 
 struct tinywl_output {
 	struct wl_list link;
@@ -116,6 +122,12 @@ struct tinywl_keyboard {
 
 	struct wl_listener modifiers;
 	struct wl_listener key;
+	struct wl_listener destroy;
+};
+
+struct tinywl_pointer_constraint {
+	struct tinywl_server *server;
+	struct wlr_pointer_constraint_v1 *constraint;
 	struct wl_listener destroy;
 };
 
@@ -309,6 +321,34 @@ static void switch_toplevel_workspace(struct tinywl_server *server, int workspac
 }
 
 
+static void switch_output(struct tinywl_server *server)
+{
+
+	struct wlr_output *wlr_output = wlr_output_layout_output_at(server->output_layout, server->cursor->x, server->cursor->y);
+	struct tinywl_output *output = wlr_output->data;
+
+	struct tinywl_output *next_output;
+
+	wl_list_for_each(next_output, &server->outputs, link)
+	{
+		if(next_output != output)
+		{
+
+			struct wlr_output_layout_output *lo = wlr_output_layout_get(server->output_layout, next_output->wlr_output);
+
+			int output_x = lo->x;
+			int output_y = lo->y;
+
+			int width = next_output->wlr_output->width;
+			int height = next_output->wlr_output->height;
+
+
+			wlr_cursor_warp(server->cursor, NULL, output_x + width/2, output_y + height/2);
+			return;
+		}
+	}
+}
+
 static void switch_toplevel_output(struct tinywl_server *server)
 {
 
@@ -379,8 +419,8 @@ static bool handle_keybinding(struct tinywl_server *server, xkb_keysym_t sym) {
 		case XKB_KEY_dollar: 		switch_toplevel_workspace(server, 4); break;
 		case XKB_KEY_percent: 		switch_toplevel_workspace(server, 5); break;
 
+		case XKB_KEY_Tab:			switch_output(server); break;
 		case XKB_KEY_grave:			switch_toplevel_output(server); break;
-
 
 		default: return false;
 	}
@@ -572,6 +612,7 @@ static void process_cursor_motion(struct tinywl_server *server, uint32_t time) {
 	double sx, sy;
 	struct wlr_seat *seat = server->seat;
 	struct wlr_surface *surface = NULL;
+	struct wlr_pointer_constraint_v1 *constraint = NULL;
 	struct tinywl_toplevel *toplevel = desktop_toplevel_at(server, server->cursor->x, server->cursor->y, &surface, &sx, &sy);
 	if (!toplevel) {
 		/* If there's no toplevel under the cursor, set the cursor image to a
@@ -584,6 +625,7 @@ static void process_cursor_motion(struct tinywl_server *server, uint32_t time) {
 		focus_toplevel(toplevel);
 	}
 	if (surface) {
+		constraint = wlr_pointer_constraints_v1_constraint_for_surface(server->wlr_pointer_constraints, surface, seat);
 		/*
 		 * Send pointer enter and motion events.
 		 *
@@ -597,9 +639,23 @@ static void process_cursor_motion(struct tinywl_server *server, uint32_t time) {
 		 */
 		wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
 		wlr_seat_pointer_notify_motion(seat, time, sx, sy);
+
+		if (constraint != server->active_constraint)
+		{
+			struct wlr_pointer_constraint_v1 *previous_constraint = server->active_constraint;
+			server->active_constraint = NULL;
+
+			if(previous_constraint) {
+				wlr_pointer_constraint_v1_send_deactivated(previous_constraint);
+			}
+
+			if(constraint) {
+				server->active_constraint = constraint;
+				wlr_pointer_constraint_v1_send_activated(constraint);
+			}
+		}
+
 	} else {
-		/* Clear pointer focus so future button events and such are not sent to
-		 * the last client to have the cursor over it. */
 		wlr_seat_pointer_clear_focus(seat);
 	}
 }
@@ -614,7 +670,12 @@ static void server_cursor_motion(struct wl_listener *listener, void *data) {
 	 * special configuration applied for the specific input device which
 	 * generated the event. You can pass NULL for the device if you want to move
 	 * the cursor around without any input. */
-	wlr_cursor_move(server->cursor, &event->pointer->base, event->delta_x, event->delta_y);
+
+	
+	if(!server->active_constraint || server->active_constraint->type != WLR_POINTER_CONSTRAINT_V1_LOCKED)
+	{
+		wlr_cursor_move(server->cursor, &event->pointer->base, event->delta_x, event->delta_y);
+	}
 
 
 	wlr_relative_pointer_manager_v1_send_relative_motion(
@@ -994,6 +1055,33 @@ static void server_new_xwayland_surface(struct wl_listener *listener, void *data
 	wl_signal_add(&xwayland_surface->events.destroy, &toplevel->xwayland_destroy);
 }
 
+static void pointer_constraint_destroy(struct wl_listener *listener, void *data)
+{
+	struct tinywl_pointer_constraint *constraint = wl_container_of(listener, constraint, destroy);
+	struct tinywl_server *server = constraint->server;
+
+	if(server->active_constraint == constraint->constraint)
+	{
+		server->active_constraint = NULL;
+	}
+
+	wl_list_remove(&constraint->destroy.link);
+
+	free(constraint);
+}
+
+static void server_new_pointer_constraint(struct wl_listener *listener, void *data)
+{
+	struct tinywl_server *server = wl_container_of(listener, server, new_pointer_constraint);
+	struct tinywl_pointer_constraint *constraint = calloc(1, sizeof(*constraint));
+	constraint->server = server;
+
+	constraint->constraint = data;
+
+	constraint->destroy.notify = pointer_constraint_destroy;
+	wl_signal_add(&constraint->constraint->events.destroy, &constraint->destroy);
+}
+
 int main(int argc, char *argv[]) {
 	wlr_log_init(WLR_ERROR, NULL);
 	char *startup_cmd = NULL;
@@ -1194,9 +1282,16 @@ int main(int argc, char *argv[]) {
 
 	server.new_xwayland_surface.notify = server_new_xwayland_surface;
 	wl_signal_add(&server.xwayland->events.new_surface, &server.new_xwayland_surface);
-	//end xwayland
 
+	//relative pointer
 	server.relative_pointer_manager = wlr_relative_pointer_manager_v1_create(server.wl_display);
+
+	//pointer constraints
+	server.wlr_pointer_constraints = wlr_pointer_constraints_v1_create(server.wl_display);
+
+	server.new_pointer_constraint.notify = server_new_pointer_constraint;
+	wl_signal_add(&server.wlr_pointer_constraints->events.new_constraint, &server.new_pointer_constraint);
+
 	wl_display_run(server.wl_display);
 
 
