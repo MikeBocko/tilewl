@@ -110,6 +110,8 @@ static struct wlr_cursor *cursor;
 static struct wlr_output_layout *output_layout;
 static struct wlr_xcursor_manager *cursor_mgr;
 
+static struct tinywl_toplevel *focused_toplevel;
+
 //constraints
 static struct wlr_relative_pointer_manager_v1 *relative_pointer_manager;
 static struct wlr_pointer_constraints_v1 *wlr_pointer_constraints;
@@ -120,73 +122,56 @@ static struct wl_listener new_pointer_constraint;
 static struct wlr_xwayland *xwayland;
 static struct wl_listener new_xwayland_surface;
 
+static void unfocus_toplevel()
+{
+	if(!focused_toplevel)
+	{
+		return;
+	}
 
+	if (focused_toplevel->xdg_toplevel)
+	{
+		wlr_xdg_toplevel_set_activated(focused_toplevel->xdg_toplevel, false);
+	}
+	else
+	{
+		wlr_xwayland_surface_activate(focused_toplevel->xwayland_surface, false);
+	}
+
+	focused_toplevel = NULL;
+}
 
 static void focus_toplevel(struct tinywl_toplevel *toplevel) {
 	/* Note: this function only deals with keyboard focus. */
-	if (toplevel == NULL) {
+	if (toplevel == NULL)
+	{
 		return;
 	}
-	struct wlr_surface *prev_surface = seat->keyboard_state.focused_surface;
+
+	if (toplevel == focused_toplevel)
+	{
+		return;
+	}
+
+	unfocus_toplevel();
 
 	struct wlr_surface *surface;
-
-	if(toplevel->xwayland_surface != NULL)
-	{
-		surface = toplevel->xwayland_surface->surface;
-	}
-	else
+	/* Activate the new surface */
+	if (toplevel->xdg_toplevel)
 	{
 		surface = toplevel->xdg_toplevel->base->surface;
-	}
-	
-	if (prev_surface == surface) {
-		/* Don't re-focus an already focused surface. */
-		return;
-	}
-	if (prev_surface) {
-		/*
-		 * Deactivate the previously focused surface. This lets the client know
-		 * it no longer has focus and the client will repaint accordingly, e.g.
-		 * stop displaying a caret.
-		 */
-
-		struct wlr_xdg_toplevel *prev_toplevel = wlr_xdg_toplevel_try_from_wlr_surface(prev_surface);
-		if (prev_toplevel != NULL)
-		{
-			wlr_xdg_toplevel_set_activated(prev_toplevel, false);
-		}
-		else
-		{
-			struct wlr_xwayland_surface *prev_xwayland = wlr_xwayland_surface_try_from_wlr_surface(prev_surface);
-			if(prev_xwayland != NULL)
-			{
-				wlr_xwayland_surface_activate(prev_xwayland, false);
-			}
-		}
-	}
-	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
-	/* Move the toplevel to the front */
-	wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
-	wl_list_remove(&toplevel->link);
-	wl_list_insert(&toplevels, &toplevel->link);
-	/* Activate the new surface */
-	
-	if(toplevel->xwayland_surface != NULL)
-	{
-		wlr_xwayland_surface_activate(toplevel->xwayland_surface, true);
+		wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, true);
 	}
 	else
 	{
-		wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, true);
+		surface = toplevel->xwayland_surface->surface;
+		wlr_xwayland_surface_activate(toplevel->xwayland_surface, true);
 	}
-	
-	/*
-	 * Tell the seat to have the keyboard enter this surface. wlroots will keep
-	 * track of this and automatically send key events to the appropriate
-	 * clients without additional work on your part.
-	 */
-	if (keyboard != NULL)
+
+	focused_toplevel = toplevel;
+
+	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
+	if (keyboard)
 	{
 		wlr_seat_keyboard_notify_enter(seat, surface, keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
 	}
@@ -203,25 +188,20 @@ static void spawn(const char *cmd[])
 
 static void kill_top_level()
 {
-	if (wl_list_empty(&toplevels))
+	if (!focused_toplevel)
 	{
 		return;
 	}
 
-	struct tinywl_toplevel *toplevel = wl_container_of(toplevels.next, toplevel, link);
-
-	//xwayland
-
-	if(toplevel->xwayland_surface != NULL)
+	//wayland
+	if(focused_toplevel->xdg_toplevel)
 	{
-		wlr_xwayland_surface_close(toplevel->xwayland_surface);
+		wlr_xdg_toplevel_send_close(focused_toplevel->xdg_toplevel);
 		return;
 	}
 	
-
-	//wayland
-
-	wlr_xdg_toplevel_send_close(toplevel->xdg_toplevel);
+	//xwayland
+	wlr_xwayland_surface_close(focused_toplevel->xwayland_surface);
 }
 
 static int count_tiles(struct tinywl_output *output)
@@ -282,7 +262,7 @@ static void tile(struct tinywl_output *output)
 			{
 				wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
 			}
-			wlr_scene_node_set_position(&toplevel->scene_tree->node, output_x + width * i , output_y);
+			wlr_scene_node_set_position(&toplevel->scene_tree->node, output_x + width * i, output_y);
 			i++;
 		}
 	}
@@ -296,20 +276,21 @@ static void switch_workspace(int workspace)
 	output->active_workspace = workspace;
 
 	tile(output);
+	unfocus_toplevel();
 }
 
 static void switch_toplevel_workspace(int workspace)
 {
-	if (wl_list_empty(&toplevels))
+	if (!focused_toplevel)
 	{
 		return;
 	}
 
-	struct tinywl_toplevel *toplevel = wl_container_of(toplevels.next, toplevel, link);
+	focused_toplevel->workspace = workspace;
 
-	toplevel->workspace = workspace;
+	tile(focused_toplevel->output);
 
-	tile(toplevel->output);
+	unfocus_toplevel();
 }
 
 
@@ -347,18 +328,15 @@ static void switch_toplevel_output()
 		return;
 	}
 
-	struct tinywl_toplevel *toplevel = wl_container_of(toplevels.next, toplevel, link);
-
-
-	struct tinywl_output *prev_output = toplevel->output;
+	struct tinywl_output *prev_output = focused_toplevel->output;
 	struct tinywl_output *next_output;
 
 	wl_list_for_each(next_output, &outputs, link)
 	{
 		if(next_output != prev_output)
 		{
-			toplevel->output = next_output;
-			toplevel->workspace = next_output->active_workspace;
+			focused_toplevel->output = next_output;
+			focused_toplevel->workspace = next_output->active_workspace;
 
 			tile(prev_output);
 			tile(next_output);
@@ -546,7 +524,8 @@ static void seat_pointer_focus_change(struct wl_listener *listener, void *data) 
 	 * client is closed. We set the cursor image to its default if target surface
 	 * is NULL */
 	struct wlr_seat_pointer_focus_change_event *event = data;
-	if (event->new_surface == NULL) {
+	if (event->new_surface == NULL)
+	{
 		wlr_cursor_set_xcursor(cursor, cursor_mgr, "default");
 	}
 }
@@ -822,6 +801,10 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
 	/* Called when the surface is unmapped, and should no longer be shown. */
 	struct tinywl_toplevel *toplevel = wl_container_of(listener, toplevel, unmap);
 	
+	if (toplevel == focused_toplevel)
+	{
+		unfocus_toplevel();
+	}
 	wl_list_remove(&toplevel->link);
 
 	tile(toplevel->output);
