@@ -253,7 +253,7 @@ static void tile(struct tinywl_output *output)
 		{
 			if(toplevel->xwayland_surface != NULL)
 			{
-				wlr_xwayland_surface_configure(toplevel->xwayland_surface, 0, 0, width, height);
+				wlr_xwayland_surface_configure(toplevel->xwayland_surface, output_x + width * i, output_y, width, height);
 			}
 			else
 			{
