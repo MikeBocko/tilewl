@@ -38,7 +38,7 @@ struct tinywl_output {
 	struct wl_listener request_state;
 	struct wl_listener destroy;
 
-	int active_workspace;
+	char active_workspace;
 };
 
 struct tinywl_toplevel {
@@ -52,7 +52,7 @@ struct tinywl_toplevel {
 	struct wl_listener request_fullscreen;
 
 	struct tinywl_output *output;
-	int workspace;
+	char workspace;
 
 	//xwayland
 	struct wlr_xwayland_surface *xwayland_surface;
