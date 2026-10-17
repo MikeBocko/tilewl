@@ -1,8 +1,5 @@
-#include <assert.h>
 #include <getopt.h>
-#include <stdbool.h>
 #include <stdlib.h>
-#include <stdio.h>
 #include <time.h>
 #include <unistd.h>
 #include <wayland-server-core.h>
@@ -229,6 +226,8 @@ static void kill_top_level()
 
 static void tile(struct tinywl_output *output)
 {
+	active_constraint = NULL;
+	
 	struct tinywl_toplevel *toplevel;
 
 	int n = 0;
@@ -796,8 +795,6 @@ static void server_new_output(struct wl_listener *listener, void *data) {
 	 * display, which Wayland clients can see to find out information about the
 	 * output (such as DPI, scale factor, manufacturer, etc).
 	 */
-
-
 	struct wlr_output_layout_output *l_output = wlr_output_layout_add_auto(output_layout, wlr_output);
 	struct wlr_scene_output *scene_output = wlr_scene_output_create(scene, wlr_output);
 	wlr_scene_output_layout_add_output(scene_layout, l_output, scene_output);
@@ -820,7 +817,6 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
 	/* Called when the surface is unmapped, and should no longer be shown. */
 	struct tinywl_toplevel *toplevel = wl_container_of(listener, toplevel, unmap);
 	
-
 	wl_list_remove(&toplevel->link);
 
 	tile(toplevel->output);
@@ -933,7 +929,6 @@ static void server_new_xdg_popup(struct wl_listener *listener, void *data) {
 	 * we always set the user data field of xdg_surfaces to the corresponding
 	 * scene node. */
 	struct wlr_xdg_surface *parent = wlr_xdg_surface_try_from_wlr_surface(xdg_popup->parent);
-	assert(parent != NULL);
 	struct wlr_scene_tree *parent_tree = parent->data;
 	xdg_popup->base->data = wlr_scene_xdg_surface_create(parent_tree, xdg_popup->base);
 
@@ -1040,23 +1035,6 @@ static void server_new_pointer_constraint(struct wl_listener *listener, void *da
 
 int main(int argc, char *argv[]) {
 	wlr_log_init(WLR_ERROR, NULL);
-	char *startup_cmd = NULL;
-
-	int c;
-	while ((c = getopt(argc, argv, "s:h")) != -1) {
-		switch (c) {
-		case 's':
-			startup_cmd = optarg;
-			break;
-		default:
-			printf("Usage: %s [-s startup command]\n", argv[0]);
-			return 0;
-		}
-	}
-	if (optind < argc) {
-		printf("Usage: %s [-s startup command]\n", argv[0]);
-		return 0;
-	}
 
 	/* The Wayland display is managed by libwayland. It handles accepting
 	 * clients from the Unix socket, managing Wayland globals, and so on. */
@@ -1087,8 +1065,7 @@ int main(int argc, char *argv[]) {
 	 * The allocator is the bridge between the renderer and the backend. It
 	 * handles the buffer creation, allowing wlroots to render onto the
 	 * screen */
-	allocator = wlr_allocator_autocreate(backend,
-		renderer);
+	allocator = wlr_allocator_autocreate(backend, renderer);
 	if (allocator == NULL) {
 		wlr_log(WLR_ERROR, "failed to create wlr_allocator");
 		return 1;
@@ -1210,11 +1187,7 @@ int main(int argc, char *argv[]) {
 	/* Set the WAYLAND_DISPLAY environment variable to our socket and run the
 	 * startup command if requested. */
 	setenv("WAYLAND_DISPLAY", socket, true);
-	if (startup_cmd) {
-		if (fork() == 0) {
-			execl("/bin/sh", "/bin/sh", "-c", startup_cmd, (void *)NULL);
-		}
-	}
+
 	/* Run the Wayland event loop. This does not return until you exit the
 	 * compositor. Starting the backend rigged up all of the necessary event
 	 * loop configuration to listen to libinput events, DRM events, generate
@@ -1227,11 +1200,6 @@ int main(int argc, char *argv[]) {
 		compositor,
 		true
 	);
-
-	if (xwayland == NULL) {
-		wlr_log(WLR_ERROR, "failed to create Xwayland");
-		return 1;
-	}
 
 	setenv("DISPLAY", xwayland->display_name, true);
 
@@ -1248,8 +1216,6 @@ int main(int argc, char *argv[]) {
 	wl_signal_add(&wlr_pointer_constraints->events.new_constraint, &new_pointer_constraint);
 
 	wl_display_run(wl_display);
-
-
 
 
 	/* Once wl_display_run returns, we destroy all clients then shut down the
