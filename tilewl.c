@@ -31,33 +31,6 @@
 //xwayland
 #include <wlr/xwayland.h>
 
-struct tinywl_server {
-	struct wl_listener new_xdg_toplevel;
-	struct wl_listener new_xdg_popup;
-	struct wl_list toplevels;
-
-	struct wl_listener cursor_motion;
-	struct wl_listener cursor_motion_absolute;
-	struct wl_listener cursor_button;
-	struct wl_listener cursor_axis;
-	struct wl_listener cursor_frame;
-
-	struct wl_listener new_input;
-	struct wl_listener request_cursor;
-	struct wl_listener pointer_focus_change;
-	struct wl_listener request_set_selection;
-	struct wl_list keyboards;
-
-	struct wl_list outputs;
-	struct wl_listener new_output;
-
-	//relative pointer
-	struct wl_listener new_pointer_constraint;
-
-	//xwayland
-	struct wl_listener new_xwayland_surface;
-};
-
 struct tinywl_output {
 	struct wl_list link;
 	struct wlr_output *wlr_output;
@@ -108,6 +81,24 @@ struct tinywl_pointer_constraint {
 	struct wl_listener destroy;
 };
 
+static struct wl_listener new_xdg_toplevel;
+static struct wl_listener new_xdg_popup;
+static struct wl_list toplevels;
+
+static struct wl_listener cursor_motion;
+static struct wl_listener cursor_motion_absolute;
+static struct wl_listener cursor_button;
+static struct wl_listener cursor_axis;
+static struct wl_listener cursor_frame;
+
+static struct wl_listener new_input;
+static struct wl_listener request_cursor;
+static struct wl_listener pointer_focus_change;
+static struct wl_listener request_set_selection;
+static struct wl_list keyboards;
+
+static struct wl_list outputs;
+static struct wl_listener new_output;
 
 static struct wlr_xdg_shell *xdg_shell;
 static struct tinywl_server *server;
@@ -126,9 +117,13 @@ static struct wlr_xcursor_manager *cursor_mgr;
 static struct wlr_relative_pointer_manager_v1 *relative_pointer_manager;
 static struct wlr_pointer_constraints_v1 *wlr_pointer_constraints;
 static struct wlr_pointer_constraint_v1 *active_constraint;
+static struct wl_listener new_pointer_constraint;
 
 //xwayland
 static struct wlr_xwayland *xwayland;
+static struct wl_listener new_xwayland_surface;
+
+
 
 static void focus_toplevel(struct tinywl_toplevel *toplevel) {
 	/* Note: this function only deals with keyboard focus. */
@@ -177,7 +172,7 @@ static void focus_toplevel(struct tinywl_toplevel *toplevel) {
 	/* Move the toplevel to the front */
 	wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
 	wl_list_remove(&toplevel->link);
-	wl_list_insert(&server->toplevels, &toplevel->link);
+	wl_list_insert(&toplevels, &toplevel->link);
 	/* Activate the new surface */
 	
 	if(toplevel->xwayland_surface != NULL)
@@ -211,12 +206,12 @@ static void spawn(const char *cmd[])
 
 static void kill_top_level()
 {
-	if (wl_list_empty(&server->toplevels))
+	if (wl_list_empty(&toplevels))
 	{
 		return;
 	}
 
-	struct tinywl_toplevel *toplevel = wl_container_of(server->toplevels.next, toplevel, link);
+	struct tinywl_toplevel *toplevel = wl_container_of(toplevels.next, toplevel, link);
 
 	//xwayland
 
@@ -238,7 +233,7 @@ static void tile(struct tinywl_output *output)
 
 	int n = 0;
 
-	wl_list_for_each(toplevel, &server->toplevels, link)
+	wl_list_for_each(toplevel, &toplevels, link)
 	{
 		if(toplevel->output == output)
 		{
@@ -271,7 +266,7 @@ static void tile(struct tinywl_output *output)
 
 	int size_x = width / n;
 
-	wl_list_for_each(toplevel, &server->toplevels, link)
+	wl_list_for_each(toplevel, &toplevels, link)
 	{
 		if(toplevel->output == output && toplevel->workspace == output->active_workspace)
 		{
@@ -301,12 +296,12 @@ static void switch_workspace(int workspace)
 
 static void switch_toplevel_workspace(int workspace)
 {
-	if (wl_list_empty(&server->toplevels))
+	if (wl_list_empty(&toplevels))
 	{
 		return;
 	}
 
-	struct tinywl_toplevel *toplevel = wl_container_of(server->toplevels.next, toplevel, link);
+	struct tinywl_toplevel *toplevel = wl_container_of(toplevels.next, toplevel, link);
 
 	toplevel->workspace = workspace;
 
@@ -321,7 +316,7 @@ static void switch_output()
 
 	struct tinywl_output *next_output;
 
-	wl_list_for_each(next_output, &server->outputs, link)
+	wl_list_for_each(next_output, &outputs, link)
 	{
 		if(next_output != output)
 		{
@@ -343,18 +338,18 @@ static void switch_output()
 
 static void switch_toplevel_output()
 {
-	if (wl_list_empty(&server->toplevels))
+	if (wl_list_empty(&toplevels))
 	{
 		return;
 	}
 
-	struct tinywl_toplevel *toplevel = wl_container_of(server->toplevels.next, toplevel, link);
+	struct tinywl_toplevel *toplevel = wl_container_of(toplevels.next, toplevel, link);
 
 
 	struct tinywl_output *prev_output = toplevel->output;
 	struct tinywl_output *next_output;
 
-	wl_list_for_each(next_output, &server->outputs, link)
+	wl_list_for_each(next_output, &outputs, link)
 	{
 		if(next_output != prev_output)
 		{
@@ -492,7 +487,7 @@ static void server_new_keyboard(struct wlr_input_device *device) {
 	wlr_seat_set_keyboard(seat, keyboard->wlr_keyboard);
 
 	/* And add the keyboard to our list of keyboards */
-	wl_list_insert(&server->keyboards, &keyboard->link);
+	wl_list_insert(&keyboards, &keyboard->link);
 }
 
 static void server_new_pointer(struct wlr_input_device *device) {
@@ -521,7 +516,7 @@ static void server_new_input(struct wl_listener *listener, void *data) {
 	 * communiciated to the client. In TinyWL we always have a cursor, even if
 	 * there are no pointer devices, so we always include that capability. */
 	uint32_t caps = WL_SEAT_CAPABILITY_POINTER;
-	if (!wl_list_empty(&server->keyboards)) {
+	if (!wl_list_empty(&keyboards)) {
 		caps |= WL_SEAT_CAPABILITY_KEYBOARD;
 	}
 	wlr_seat_set_capabilities(seat, caps);
@@ -766,7 +761,7 @@ static void server_new_output(struct wl_listener *listener, void *data) {
 		wlr_output_state_set_mode(&state, mode);
 	}
 
-	/* Atomically applies the new output state. */
+	/* Atomically applies the new output  */
 	wlr_output_commit_state(wlr_output, &state);
 	wlr_output_state_finish(&state);
 
@@ -790,7 +785,7 @@ static void server_new_output(struct wl_listener *listener, void *data) {
 	output->destroy.notify = output_destroy;
 	wl_signal_add(&wlr_output->events.destroy, &output->destroy);
 
-	wl_list_insert(&server->outputs, &output->link);
+	wl_list_insert(&outputs, &output->link);
 
 	/* Adds this to the output layout. The add_auto function arranges outputs
 	 * from left-to-right in the order they appear. A more sophisticated
@@ -812,7 +807,7 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 	/* Called when the surface is mapped, or ready to display on-screen. */
 	struct tinywl_toplevel *toplevel = wl_container_of(listener, toplevel, map);
 
-	wl_list_insert(&server->toplevels, &toplevel->link);
+	wl_list_insert(&toplevels, &toplevel->link);
 
 	if(!(toplevel->xwayland_surface != NULL && toplevel->xwayland_surface->override_redirect))
 	{
@@ -1063,8 +1058,6 @@ int main(int argc, char *argv[]) {
 		return 0;
 	}
 
-	struct tinywl_server state = {0};
-	server = &state;
 	/* The Wayland display is managed by libwayland. It handles accepting
 	 * clients from the Unix socket, managing Wayland globals, and so on. */
 	wl_display = wl_display_create();
@@ -1118,9 +1111,9 @@ int main(int argc, char *argv[]) {
 
 	/* Configure a listener to be notified when new outputs are available on the
 	 * backend. */
-	wl_list_init(&state.outputs);
-	state.new_output.notify = server_new_output;
-	wl_signal_add(&backend->events.new_output, &state.new_output);
+	wl_list_init(&outputs);
+	new_output.notify = server_new_output;
+	wl_signal_add(&backend->events.new_output, &new_output);
 
 	/* Create a scene graph. This is a wlroots abstraction that handles all
 	 * rendering and damage tracking. All the compositor author needs to do
@@ -1135,12 +1128,12 @@ int main(int argc, char *argv[]) {
 	 * used for application windows. For more detail on shells, refer to
 	 * https://drewdevault.com/2018/07/29/Wayland-shells.html.
 	 */
-	wl_list_init(&state.toplevels);
+	wl_list_init(&toplevels);
 	xdg_shell = wlr_xdg_shell_create(wl_display, 3);
-	state.new_xdg_toplevel.notify = server_new_xdg_toplevel;
-	wl_signal_add(&xdg_shell->events.new_toplevel, &state.new_xdg_toplevel);
-	state.new_xdg_popup.notify = server_new_xdg_popup;
-	wl_signal_add(&xdg_shell->events.new_popup, &state.new_xdg_popup);
+	new_xdg_toplevel.notify = server_new_xdg_toplevel;
+	wl_signal_add(&xdg_shell->events.new_toplevel, &new_xdg_toplevel);
+	new_xdg_popup.notify = server_new_xdg_popup;
+	wl_signal_add(&xdg_shell->events.new_popup, &new_xdg_popup);
 
 	/*
 	 * Creates a cursor, which is a wlroots utility for tracking the cursor
@@ -1165,20 +1158,20 @@ int main(int argc, char *argv[]) {
 	 *
 	 * And more comments are sprinkled throughout the notify functions above.
 	 */
-	state.cursor_motion.notify = server_cursor_motion;
-	wl_signal_add(&cursor->events.motion, &state.cursor_motion);
+	cursor_motion.notify = server_cursor_motion;
+	wl_signal_add(&cursor->events.motion, &cursor_motion);
 
-	state.cursor_motion_absolute.notify = server_cursor_motion_absolute;
-	wl_signal_add(&cursor->events.motion_absolute, &state.cursor_motion_absolute);
+	cursor_motion_absolute.notify = server_cursor_motion_absolute;
+	wl_signal_add(&cursor->events.motion_absolute, &cursor_motion_absolute);
 
-	state.cursor_button.notify = server_cursor_button;
-	wl_signal_add(&cursor->events.button, &state.cursor_button);
+	cursor_button.notify = server_cursor_button;
+	wl_signal_add(&cursor->events.button, &cursor_button);
 
-	state.cursor_axis.notify = server_cursor_axis;
-	wl_signal_add(&cursor->events.axis, &state.cursor_axis);
+	cursor_axis.notify = server_cursor_axis;
+	wl_signal_add(&cursor->events.axis, &cursor_axis);
 
-	state.cursor_frame.notify = server_cursor_frame;
-	wl_signal_add(&cursor->events.frame, &state.cursor_frame);
+	cursor_frame.notify = server_cursor_frame;
+	wl_signal_add(&cursor->events.frame, &cursor_frame);
 
 	/*
 	 * Configures a seat, which is a single "seat" at which a user sits and
@@ -1186,18 +1179,18 @@ int main(int argc, char *argv[]) {
 	 * pointer, touch, and drawing tablet device. We also rig up a listener to
 	 * let us know when new input devices are available on the backend.
 	 */
-	wl_list_init(&state.keyboards);
-	state.new_input.notify = server_new_input;
-	wl_signal_add(&backend->events.new_input, &state.new_input);
+	wl_list_init(&keyboards);
+	new_input.notify = server_new_input;
+	wl_signal_add(&backend->events.new_input, &new_input);
 	seat = wlr_seat_create(wl_display, "seat0");
-	state.request_cursor.notify = seat_request_cursor;
-	wl_signal_add(&seat->events.request_set_cursor, &state.request_cursor);
+	request_cursor.notify = seat_request_cursor;
+	wl_signal_add(&seat->events.request_set_cursor, &request_cursor);
 
-	state.pointer_focus_change.notify = seat_pointer_focus_change;
-	wl_signal_add(&seat->pointer_state.events.focus_change, &state.pointer_focus_change);
+	pointer_focus_change.notify = seat_pointer_focus_change;
+	wl_signal_add(&seat->pointer_state.events.focus_change, &pointer_focus_change);
 
-	state.request_set_selection.notify = seat_request_set_selection;
-	wl_signal_add(&seat->events.request_set_selection, &state.request_set_selection);
+	request_set_selection.notify = seat_request_set_selection;
+	wl_signal_add(&seat->events.request_set_selection, &request_set_selection);
 
 	/* Add a Unix socket to the Wayland display. */
 	const char *socket = wl_display_add_socket_auto(wl_display);
@@ -1242,8 +1235,8 @@ int main(int argc, char *argv[]) {
 
 	setenv("DISPLAY", xwayland->display_name, true);
 
-	state.new_xwayland_surface.notify = server_new_xwayland_surface;
-	wl_signal_add(&xwayland->events.new_surface, &state.new_xwayland_surface);
+	new_xwayland_surface.notify = server_new_xwayland_surface;
+	wl_signal_add(&xwayland->events.new_surface, &new_xwayland_surface);
 
 	//relative pointer
 	relative_pointer_manager = wlr_relative_pointer_manager_v1_create(wl_display);
@@ -1251,8 +1244,8 @@ int main(int argc, char *argv[]) {
 	//pointer constraints
 	wlr_pointer_constraints = wlr_pointer_constraints_v1_create(wl_display);
 
-	state.new_pointer_constraint.notify = server_new_pointer_constraint;
-	wl_signal_add(&wlr_pointer_constraints->events.new_constraint, &state.new_pointer_constraint);
+	new_pointer_constraint.notify = server_new_pointer_constraint;
+	wl_signal_add(&wlr_pointer_constraints->events.new_constraint, &new_pointer_constraint);
 
 	wl_display_run(wl_display);
 
@@ -1260,24 +1253,24 @@ int main(int argc, char *argv[]) {
 
 
 	/* Once wl_display_run returns, we destroy all clients then shut down the
-	 * state. */
+	 *  */
 	wl_display_destroy_clients(wl_display);
 
-	wl_list_remove(&state.new_xdg_toplevel.link);
-	wl_list_remove(&state.new_xdg_popup.link);
+	wl_list_remove(&new_xdg_toplevel.link);
+	wl_list_remove(&new_xdg_popup.link);
 
-	wl_list_remove(&state.cursor_motion.link);
-	wl_list_remove(&state.cursor_motion_absolute.link);
-	wl_list_remove(&state.cursor_button.link);
-	wl_list_remove(&state.cursor_axis.link);
-	wl_list_remove(&state.cursor_frame.link);
+	wl_list_remove(&cursor_motion.link);
+	wl_list_remove(&cursor_motion_absolute.link);
+	wl_list_remove(&cursor_button.link);
+	wl_list_remove(&cursor_axis.link);
+	wl_list_remove(&cursor_frame.link);
 
-	wl_list_remove(&state.new_input.link);
-	wl_list_remove(&state.request_cursor.link);
-	wl_list_remove(&state.pointer_focus_change.link);
-	wl_list_remove(&state.request_set_selection.link);
+	wl_list_remove(&new_input.link);
+	wl_list_remove(&request_cursor.link);
+	wl_list_remove(&pointer_focus_change.link);
+	wl_list_remove(&request_set_selection.link);
 
-	wl_list_remove(&state.new_output.link);
+	wl_list_remove(&new_output.link);
 
 	wlr_scene_node_destroy(&scene->tree.node);
 	wlr_xcursor_manager_destroy(cursor_mgr);
