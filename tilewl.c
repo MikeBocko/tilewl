@@ -1,4 +1,3 @@
-#include <getopt.h>
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
@@ -32,7 +31,6 @@ struct tinywl_output {
 	struct wl_list link;
 	struct wlr_output *wlr_output;
 	struct wl_listener frame;
-	struct wl_listener request_state;
 	struct wl_listener destroy;
 
 	char active_workspace;
@@ -98,7 +96,6 @@ static struct wl_list outputs;
 static struct wl_listener new_output;
 
 static struct wlr_xdg_shell *xdg_shell;
-static struct tinywl_server *server;
 static struct wlr_seat *seat;
 static struct wl_display *wl_display;
 static struct wlr_backend *backend;
@@ -323,7 +320,7 @@ static void switch_output()
 
 static void switch_toplevel_output()
 {
-	if (wl_list_empty(&toplevels))
+	if (!focused_toplevel)
 	{
 		return;
 	}
@@ -701,20 +698,10 @@ static void output_frame(struct wl_listener *listener, void *data) {
 	wlr_scene_output_send_frame_done(scene_output, &now);
 }
 
-static void output_request_state(struct wl_listener *listener, void *data) {
-	/* This function is called when the backend requests a new state for
-	 * the output. For example, Wayland and X11 backends request a new mode
-	 * when the output window is resized. */
-	struct tinywl_output *output = wl_container_of(listener, output, request_state);
-	const struct wlr_output_event_request_state *event = data;
-	wlr_output_commit_state(output->wlr_output, event->state);
-}
-
 static void output_destroy(struct wl_listener *listener, void *data) {
 	struct tinywl_output *output = wl_container_of(listener, output, destroy);
 
 	wl_list_remove(&output->frame.link);
-	wl_list_remove(&output->request_state.link);
 	wl_list_remove(&output->destroy.link);
 	wl_list_remove(&output->link);
 	free(output);
@@ -764,10 +751,6 @@ static void server_new_output(struct wl_listener *listener, void *data) {
 	/* Sets up a listener for the frame event. */
 	output->frame.notify = output_frame;
 	wl_signal_add(&wlr_output->events.frame, &output->frame);
-
-	/* Sets up a listener for the state request event. */
-	output->request_state.notify = output_request_state;
-	wl_signal_add(&wlr_output->events.request_state, &output->request_state);
 
 	/* Sets up a listener for the destroy event. */
 	output->destroy.notify = output_destroy;
