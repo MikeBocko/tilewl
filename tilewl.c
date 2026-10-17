@@ -280,15 +280,13 @@ static void tile(struct tinywl_server *server, struct tinywl_output *output)
 		{
 			if(toplevel->xwayland_surface != NULL)
 			{
-				wlr_xwayland_surface_configure(toplevel->xwayland_surface, 0, 0, size_x, height);	
+				wlr_xwayland_surface_configure(toplevel->xwayland_surface, 0, 0, size_x, height);
 			}
 			else
 			{
 				wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, size_x, height);
 			}
-			
 			wlr_scene_node_set_position(&toplevel->scene_tree->node, output_x + size_x * i , output_y);
-
 			i++;
 		}
 	}
@@ -845,9 +843,11 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 
 	wl_list_insert(&toplevel->server->toplevels, &toplevel->link);
 
-	focus_toplevel(toplevel);
-
-	tile(toplevel->server, toplevel->output);
+	if(!(toplevel->xwayland_surface != NULL && toplevel->xwayland_surface->override_redirect))
+	{
+		focus_toplevel(toplevel);
+		tile(toplevel->server, toplevel->output);
+	}
 }
 
 static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
@@ -1059,11 +1059,8 @@ static void pointer_constraint_destroy(struct wl_listener *listener, void *data)
 {
 	struct tinywl_pointer_constraint *constraint = wl_container_of(listener, constraint, destroy);
 	struct tinywl_server *server = constraint->server;
-
-	if(server->active_constraint == constraint->constraint)
-	{
-		server->active_constraint = NULL;
-	}
+	
+	server->active_constraint = NULL;
 
 	wl_list_remove(&constraint->destroy.link);
 
