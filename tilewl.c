@@ -224,14 +224,11 @@ static void kill_top_level()
 	wlr_xdg_toplevel_send_close(toplevel->xdg_toplevel);
 }
 
-static void tile(struct tinywl_output *output)
+static int count_tiles(struct tinywl_output *output)
 {
-	active_constraint = NULL;
-	
-	struct tinywl_toplevel *toplevel;
-
 	int n = 0;
 
+	struct tinywl_toplevel *toplevel;
 	wl_list_for_each(toplevel, &toplevels, link)
 	{
 		if(toplevel->output == output)
@@ -248,6 +245,15 @@ static void tile(struct tinywl_output *output)
 		}
 	}
 
+	return n;
+}
+
+static void tile(struct tinywl_output *output)
+{
+	active_constraint = NULL;
+
+	int n = count_tiles(output);
+
 	if (n == 0)
 	{
 		return;
@@ -258,26 +264,25 @@ static void tile(struct tinywl_output *output)
 	int output_x = lo->x;
 	int output_y = lo->y;
 
-	int width = output->wlr_output->width;
+	
 	int height = output->wlr_output->height;
-		
+	int width = output->wlr_output->width / n;
+
 	int i = 0;
-
-	int size_x = width / n;
-
+	struct tinywl_toplevel *toplevel;
 	wl_list_for_each(toplevel, &toplevels, link)
 	{
 		if(toplevel->output == output && toplevel->workspace == output->active_workspace)
 		{
 			if(toplevel->xwayland_surface != NULL)
 			{
-				wlr_xwayland_surface_configure(toplevel->xwayland_surface, 0, 0, size_x, height);
+				wlr_xwayland_surface_configure(toplevel->xwayland_surface, 0, 0, width, height);
 			}
 			else
 			{
-				wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, size_x, height);
+				wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
 			}
-			wlr_scene_node_set_position(&toplevel->scene_tree->node, output_x + size_x * i , output_y);
+			wlr_scene_node_set_position(&toplevel->scene_tree->node, output_x + width * i , output_y);
 			i++;
 		}
 	}
@@ -826,12 +831,18 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
 	/* Called when a new surface state is committed. */
 	struct tinywl_toplevel *toplevel = wl_container_of(listener, toplevel, commit);
 
+	int n = count_tiles(toplevel->output);
+	int width = toplevel->output->wlr_output->width / (n+1);
+	int height = toplevel->output->wlr_output->height;
+
+	
+
 	if (toplevel->xdg_toplevel->base->initial_commit) {
 		/* When an xdg_surface performs an initial commit, the compositor must
 		 * reply with a configure so the client can map the surface. tinywl
 		 * configures the xdg_toplevel with 0,0 size to let the client pick the
 		 * dimensions itself. */
-		wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
+		wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
 	}
 }
 
@@ -848,13 +859,11 @@ static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
 	free(toplevel);
 }
 
-static void xdg_toplevel_request_fullscreen(
-		struct wl_listener *listener, void *data) {
-	/* Just as with request_maximize, we must send a configure here. */
-	struct tinywl_toplevel *toplevel =
-		wl_container_of(listener, toplevel, request_fullscreen);
+static void xdg_toplevel_request_fullscreen(struct wl_listener *listener, void *data) {
+	struct tinywl_toplevel *toplevel = wl_container_of(listener, toplevel, request_fullscreen);
+	
 	if (toplevel->xdg_toplevel->base->initialized) {
-		wlr_xdg_surface_schedule_configure(toplevel->xdg_toplevel->base);
+		wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, toplevel->xdg_toplevel->requested.fullscreen);
 	}
 }
 
