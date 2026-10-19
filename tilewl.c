@@ -253,7 +253,7 @@ static void tile(struct tinywl_output *output)
 		{
 			if(toplevel->xwayland_surface != NULL)
 			{
-				wlr_xwayland_surface_configure(toplevel->xwayland_surface, output_x + width * i, output_y, width, height);
+				wlr_xwayland_surface_configure(toplevel->xwayland_surface, 0, 0, width, height);
 			}
 			else
 			{
@@ -286,7 +286,6 @@ static void switch_toplevel_workspace(int workspace)
 	focused_toplevel->workspace = workspace;
 
 	tile(focused_toplevel->output);
-
 	unfocus_toplevel();
 }
 
@@ -313,6 +312,7 @@ static void switch_output()
 
 
 			wlr_cursor_warp(cursor, NULL, output_x + width/2, output_y + height/2);
+			unfocus_toplevel();
 			return;
 		}
 	}
