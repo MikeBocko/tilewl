@@ -24,7 +24,8 @@
 #include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/types/wlr_pointer_constraints_v1.h>
 
-//xwayland
+// #include <wlr/types/wlr_layer_shell_v1.h>
+
 #include <wlr/xwayland.h>
 
 struct tinywl_output {
@@ -114,6 +115,9 @@ static struct wlr_relative_pointer_manager_v1 *relative_pointer_manager;
 static struct wlr_pointer_constraints_v1 *wlr_pointer_constraints;
 static struct wlr_pointer_constraint_v1 *active_constraint;
 static struct wl_listener new_pointer_constraint;
+
+// static struct wlr_layer_shell_v1 *layer_shell;
+// static struct wl_listener new_layer_surface;
 
 //xwayland
 static struct wlr_xwayland *xwayland;
@@ -1013,6 +1017,27 @@ static void server_new_pointer_constraint(struct wl_listener *listener, void *da
 	wl_signal_add(&constraint->constraint->events.destroy, &constraint->destroy);
 }
 
+// static void server_new_layer_surface(struct wl_listener *listener, void *data)
+// {
+// 	struct wlr_layer_surface_v1 * surface = data;
+
+// 	if(!surface->output)
+// 	{
+// 		surface->output = wlr_output_layout_output_at(output_layout, cursor->x, cursor->y);
+// 	}
+
+// 	struct wlr_box full_area = { 
+// 		.x = 0,
+// 		.y = 0,
+// 		.width = surface->output->width,
+// 		.height = surface->output->height,
+// 	}
+
+// 	wlr_scene_layer_surface_v1_create(scene, surface);
+
+// 	//wlr_scene_layer_surface_v1_configure(surface, )
+// }
+
 int main(int argc, char *argv[]) {
 	wlr_log_init(WLR_ERROR, NULL);
 
@@ -1175,12 +1200,8 @@ int main(int argc, char *argv[]) {
 
 
 	//start xwayland
-	xwayland = wlr_xwayland_create(
-		wl_display,
-		compositor,
-		true
-	);
-
+	xwayland = wlr_xwayland_create(wl_display, compositor, true);
+	wlr_xwayland_set_seat(xwayland, seat);
 	setenv("DISPLAY", xwayland->display_name, true);
 
 	new_xwayland_surface.notify = server_new_xwayland_surface;
@@ -1194,6 +1215,11 @@ int main(int argc, char *argv[]) {
 
 	new_pointer_constraint.notify = server_new_pointer_constraint;
 	wl_signal_add(&wlr_pointer_constraints->events.new_constraint, &new_pointer_constraint);
+
+	// layer_shell = wlr_layer_shell_v1_create(wl_display, 4);
+
+	// new_layer_surface.notify = server_new_layer_surface;
+	// wl_signal_add(&wlr_layer_shell->events.new_surface, &new_layer_surface);
 
 	wl_display_run(wl_display);
 
