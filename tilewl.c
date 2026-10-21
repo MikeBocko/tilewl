@@ -144,15 +144,12 @@ static void unfocus_toplevel()
 
 static void focus_toplevel(struct tinywl_toplevel *toplevel) {
 	/* Note: this function only deals with keyboard focus. */
-	if (toplevel == NULL)
-	{
-		return;
-	}
 
-	if (toplevel == focused_toplevel)
-	{
-		return;
-	}
+	if (!toplevel) return;
+
+	if (toplevel == focused_toplevel) return;
+
+	if(toplevel->xwayland_surface && toplevel->xwayland_surface->override_redirect) return;
 
 	unfocus_toplevel();
 
@@ -189,10 +186,7 @@ static void spawn(const char *cmd[])
 
 static void kill_top_level()
 {
-	if (!focused_toplevel)
-	{
-		return;
-	}
+	if (!focused_toplevel) return;
 
 	//wayland
 	if(focused_toplevel->xdg_toplevel)
@@ -212,17 +206,18 @@ static int count_tiles(struct tinywl_output *output)
 	struct tinywl_toplevel *toplevel;
 	wl_list_for_each(toplevel, &toplevels, link)
 	{
-		if(toplevel->output == output)
+		if(toplevel->xwayland_surface && toplevel->xwayland_surface->override_redirect) continue;
+
+		if(toplevel->output != output) continue;
+		
+		if(toplevel->workspace == output->active_workspace)
 		{
-			if(toplevel->workspace == output->active_workspace)
-			{
-				wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
-				n++;
-			}
-			else
-			{
-				wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
-			}
+			wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
+			n++;
+		}
+		else
+		{
+			wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
 		}
 	}
 
@@ -253,19 +248,22 @@ static void tile(struct tinywl_output *output)
 	struct tinywl_toplevel *toplevel;
 	wl_list_for_each(toplevel, &toplevels, link)
 	{
-		if(toplevel->output == output && toplevel->workspace == output->active_workspace)
+		if(toplevel->output != output) continue;
+	
+		if(toplevel->workspace != output->active_workspace) continue;
+
+		if(toplevel->xwayland_surface && toplevel->xwayland_surface->override_redirect) continue;
+
+		if(toplevel->xwayland_surface)
 		{
-			if(toplevel->xwayland_surface != NULL)
-			{
-				wlr_xwayland_surface_configure(toplevel->xwayland_surface, 0, 0, width, height);
-			}
-			else
-			{
-				wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
-			}
-			wlr_scene_node_set_position(&toplevel->scene_tree->node, output_x + width * i, output_y);
-			i++;
+			wlr_xwayland_surface_configure(toplevel->xwayland_surface, width * i, output_y, width, height);
 		}
+		else
+		{
+			wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
+		}
+		wlr_scene_node_set_position(&toplevel->scene_tree->node, output_x + width * i, output_y);
+		i++;
 	}
 }
 
@@ -781,12 +779,8 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 	struct tinywl_toplevel *toplevel = wl_container_of(listener, toplevel, map);
 
 	wl_list_insert(&toplevels, &toplevel->link);
-
-	if(!(toplevel->xwayland_surface != NULL && toplevel->xwayland_surface->override_redirect))
-	{
-		focus_toplevel(toplevel);
-		tile(toplevel->output);
-	}
+	focus_toplevel(toplevel);
+	tile(toplevel->output);
 }
 
 static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
@@ -932,7 +926,6 @@ static void xwayland_associate(struct wl_listener *listener, void *data)
 
 	toplevel->scene_tree = wlr_scene_subsurface_tree_create(&scene->tree, surface);
 	toplevel->scene_tree->node.data = toplevel;
-	toplevel->xwayland_surface->data = toplevel->scene_tree;
 
 	toplevel->map.notify = xdg_toplevel_map;
 	wl_signal_add(&surface->events.map, &toplevel->map);
