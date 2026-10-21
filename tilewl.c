@@ -582,12 +582,9 @@ static void process_cursor_motion(uint32_t time) {
 	/* Otherwise, find the toplevel under the pointer and send the event along. */
 	double sx, sy;
 	struct wlr_surface *surface = NULL;
-	struct wlr_pointer_constraint_v1 *constraint = NULL;
 	struct tinywl_toplevel *toplevel = desktop_toplevel_at(cursor->x, cursor->y, &surface, &sx, &sy);
+	
 	if (!toplevel) {
-		/* If there's no toplevel under the cursor, set the cursor image to a
-		 * default. This is what makes the cursor image appear when you move it
-		 * around the screen, not over any toplevels. */
 		wlr_cursor_set_xcursor(cursor, cursor_mgr, "default");
 	}
 	else
@@ -595,20 +592,13 @@ static void process_cursor_motion(uint32_t time) {
 		focus_toplevel(toplevel);
 	}
 	if (surface) {
-		constraint = wlr_pointer_constraints_v1_constraint_for_surface(wlr_pointer_constraints, surface, seat);
-		/*
-		 * Send pointer enter and motion events.
-		 *
-		 * The enter event gives the surface "pointer focus", which is distinct
-		 * from keyboard focus. You get pointer focus by moving the pointer over
-		 * a window.
-		 *
-		 * Note that wlroots will avoid sending duplicate enter/motion events if
-		 * the surface has already has pointer focus or if the client is already
-		 * aware of the coordinates passed.
-		 */
+
 		wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
 		wlr_seat_pointer_notify_motion(seat, time, sx, sy);
+
+
+		struct wlr_pointer_constraint_v1 *constraint = NULL;
+		constraint = wlr_pointer_constraints_v1_constraint_for_surface(wlr_pointer_constraints, surface, seat);
 
 		if (constraint != active_constraint)
 		{
@@ -631,16 +621,8 @@ static void process_cursor_motion(uint32_t time) {
 }
 
 static void server_cursor_motion(struct wl_listener *listener, void *data) {
-	/* This event is forwarded by the cursor when a pointer emits a _relative_
-	 * pointer motion event (i.e. a delta) */
 	struct wlr_pointer_motion_event *event = data;
-	/* The cursor doesn't move unless we tell it to. The cursor automatically
-	 * handles constraining the motion to the output layout, as well as any
-	 * special configuration applied for the specific input device which
-	 * generated the event. You can pass NULL for the device if you want to move
-	 * the cursor around without any input. */
 
-	
 	if(!active_constraint || active_constraint->type != WLR_POINTER_CONSTRAINT_V1_LOCKED)
 	{
 		wlr_cursor_move(cursor, &event->pointer->base, event->delta_x, event->delta_y);
@@ -661,12 +643,6 @@ static void server_cursor_motion(struct wl_listener *listener, void *data) {
 }
 
 static void server_cursor_motion_absolute(struct wl_listener *listener, void *data) {
-	/* This event is forwarded by the cursor when a pointer emits an _absolute_
-	 * motion event, from 0..1 on each axis. This happens, for example, when
-	 * wlroots is running under a Wayland window rather than KMS+DRM, and you
-	 * move the mouse over the window. You could enter the window from any edge,
-	 * so we have to warp the mouse there. There is also some hardware which
-	 * emits these events. */
 	struct wlr_pointer_motion_absolute_event *event = data;
 	wlr_cursor_warp_absolute(cursor, &event->pointer->base, event->x, event->y);
 	process_cursor_motion(event->time_msec);
