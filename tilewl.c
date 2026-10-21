@@ -160,7 +160,7 @@ static void focus_toplevel(struct tinywl_toplevel *toplevel) {
 
 	if (toplevel == focused_toplevel) return;
 
-	if(toplevel->xwayland_surface && toplevel->xwayland_surface->override_redirect) return;
+	if (toplevel->xwayland_surface && toplevel->xwayland_surface->override_redirect) return;
 
 	unfocus_toplevel();
 
@@ -373,15 +373,17 @@ static void keyboard_handle_modifiers(struct wl_listener *listener, void *data) 
 
 static bool handle_keybinding(xkb_keysym_t sym)
 {
-	static const char *termcmd[] = {"foot", NULL};
-	static const char *browsercmd[] = {"firefox", NULL};
-	static const char *steamcmd[] = {"steam", NULL};
+	static const char *term[] = {"foot", NULL};
+	static const char *browser[] = {"firefox", NULL};
+	static const char *steam[] = {"steam", NULL};
+	static const char *snip[] = {"screenshot", NULL};
 	
 	switch (sym) 
 	{
-		case XKB_KEY_q:				spawn(termcmd);		break;
-		case XKB_KEY_e:				spawn(browsercmd); 	break;
-		case XKB_KEY_s:				spawn(steamcmd); 	break;
+		case XKB_KEY_q:				spawn(term);		break;
+		case XKB_KEY_e:				spawn(browser); 	break;
+		case XKB_KEY_s:				spawn(steam); 		break;
+		case XKB_KEY_Delete:		spawn(snip); 		break;
 
 		case XKB_KEY_c:				kill_top_level();	break;
 
