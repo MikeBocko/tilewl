@@ -8,7 +8,7 @@ LIBS!=$(PKG_CONFIG) --libs $(PKGS)
 all: tilewl
 
 tilewl.o: tilewl.c
-	$(CC) -c $< -g -Werror $(CFLAGS) -I. -DWLR_USE_UNSTABLE -o $@
+	$(CC) -c $< -g -Werror $(CFLAGS) -I. -Iprotocols -DWLR_USE_UNSTABLE -o $@
 tilewl: tilewl.o
 	$(CC) $^ -g -Werror $(CFLAGS) $(LDFLAGS) $(LIBS) -o $@
 

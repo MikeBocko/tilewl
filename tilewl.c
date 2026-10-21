@@ -24,7 +24,11 @@
 #include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/types/wlr_pointer_constraints_v1.h>
 
-// #include <wlr/types/wlr_layer_shell_v1.h>
+#include <wlr/types/wlr_layer_shell_v1.h>
+
+#include <wlr/types/wlr_screencopy_v1.h>
+
+#include <wlr/types/wlr_xdg_output_v1.h>
 
 #include <wlr/xwayland.h>
 
@@ -77,6 +81,13 @@ struct tinywl_pointer_constraint {
 	struct wl_listener destroy;
 };
 
+struct layer_surface {
+	struct wlr_layer_surface_v1 *surface;
+	struct wlr_scene_layer_surface_v1 *scene_surface;
+	struct wl_listener commit;
+	struct wl_listener destroy;
+};
+
 static struct wl_listener new_xdg_toplevel;
 static struct wl_listener new_xdg_popup;
 static struct wl_list toplevels;
@@ -116,8 +127,8 @@ static struct wlr_pointer_constraints_v1 *wlr_pointer_constraints;
 static struct wlr_pointer_constraint_v1 *active_constraint;
 static struct wl_listener new_pointer_constraint;
 
-// static struct wlr_layer_shell_v1 *layer_shell;
-// static struct wl_listener new_layer_surface;
+static struct wlr_layer_shell_v1 *layer_shell;
+static struct wl_listener new_layer_surface;
 
 //xwayland
 static struct wlr_xwayland *xwayland;
@@ -397,16 +408,14 @@ static bool handle_keybinding(xkb_keysym_t sym)
 static void keyboard_handle_key(
 		struct wl_listener *listener, void *data) {
 	/* This event is raised when a key is pressed or released. */
-	struct tinywl_keyboard *keyboard =
-		wl_container_of(listener, keyboard, key);
+	struct tinywl_keyboard *keyboard = wl_container_of(listener, keyboard, key);
 	struct wlr_keyboard_key_event *event = data;
 
 	/* Translate libinput keycode -> xkbcommon */
 	uint32_t keycode = event->keycode + 8;
 	/* Get a list of keysyms based on the keymap for this keyboard */
 	const xkb_keysym_t *syms;																												
-	int nsyms = xkb_state_key_get_syms(
-			keyboard->wlr_keyboard->xkb_state, keycode, &syms);
+	int nsyms = xkb_state_key_get_syms(keyboard->wlr_keyboard->xkb_state, keycode, &syms);
 
 	bool handled = false;
 	uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
@@ -431,8 +440,8 @@ static void keyboard_handle_destroy(struct wl_listener *listener, void *data) {
 	 * the destruction of the wlr_keyboard. It will no longer receive events
 	 * and should be destroyed.
 	 */
-	struct tinywl_keyboard *keyboard =
-		wl_container_of(listener, keyboard, destroy);
+	struct tinywl_keyboard *keyboard = wl_container_of(listener, keyboard, destroy);
+	
 	wl_list_remove(&keyboard->modifiers.link);
 	wl_list_remove(&keyboard->key.link);
 	wl_list_remove(&keyboard->destroy.link);
@@ -547,8 +556,7 @@ static struct tinywl_toplevel *desktop_toplevel_at(double lx, double ly, struct 
 		return NULL;
 	}
 	struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
-	struct wlr_scene_surface *scene_surface =
-		wlr_scene_surface_try_from_buffer(scene_buffer);
+	struct wlr_scene_surface *scene_surface = wlr_scene_surface_try_from_buffer(scene_buffer);
 	if (!scene_surface) {
 		return NULL;
 	}
@@ -560,6 +568,9 @@ static struct tinywl_toplevel *desktop_toplevel_at(double lx, double ly, struct 
 	while (tree != NULL && tree->node.data == NULL) {
 		tree = tree->node.parent;
 	}
+
+	if (!tree) return NULL;
+
 	return tree->node.data;
 }
 
@@ -1010,26 +1021,52 @@ static void server_new_pointer_constraint(struct wl_listener *listener, void *da
 	wl_signal_add(&constraint->constraint->events.destroy, &constraint->destroy);
 }
 
-// static void server_new_layer_surface(struct wl_listener *listener, void *data)
-// {
-// 	struct wlr_layer_surface_v1 * surface = data;
+static void layer_surface_commit(struct wl_listener *listener, void *data)
+{
+	struct layer_surface *layer = wl_container_of(listener, layer, commit);
 
-// 	if(!surface->output)
-// 	{
-// 		surface->output = wlr_output_layout_output_at(output_layout, cursor->x, cursor->y);
-// 	}
+	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
+	
+	if (layer->surface->current.keyboard_interactive == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE)
+	{
+		wlr_seat_keyboard_notify_enter(seat, layer->surface->surface, keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
+	}
 
-// 	struct wlr_box full_area = { 
-// 		.x = 0,
-// 		.y = 0,
-// 		.width = surface->output->width,
-// 		.height = surface->output->height,
-// 	}
+	struct wlr_box full_area = {0};
+	struct wlr_output_layout_output *lo = wlr_output_layout_get(output_layout, layer->surface->output);
 
-// 	wlr_scene_layer_surface_v1_create(scene, surface);
+	full_area.x = lo->x;
+	full_area.y = lo->y;
 
-// 	//wlr_scene_layer_surface_v1_configure(surface, )
-// }
+	wlr_output_effective_resolution(layer->surface->output, &full_area.width, &full_area.height);
+
+	wlr_scene_layer_surface_v1_configure(layer->scene_surface, &full_area, &full_area);
+}
+
+static void layer_surface_destroy(struct wl_listener *listener, void *data)
+{
+	struct layer_surface *layer = wl_container_of(listener, layer, destroy);
+	
+
+	wl_list_remove(&layer->commit.link);
+	wl_list_remove(&layer->destroy.link);
+
+	free(layer);
+}
+
+static void server_new_layer_surface(struct wl_listener *listener, void *data)
+{
+	struct layer_surface *layer = calloc(1, sizeof(*layer));
+	layer->surface = data;
+
+	layer->scene_surface = wlr_scene_layer_surface_v1_create(&scene->tree, layer->surface);
+
+	layer->commit.notify = layer_surface_commit;
+	wl_signal_add(&layer->surface->surface->events.commit, &layer->commit);
+
+	layer->destroy.notify = layer_surface_destroy;
+	wl_signal_add(&layer->surface->surface->events.destroy, &layer->destroy);
+}
 
 int main(int argc, char *argv[]) {
 	wlr_log_init(WLR_ERROR, NULL);
@@ -1209,10 +1246,14 @@ int main(int argc, char *argv[]) {
 	new_pointer_constraint.notify = server_new_pointer_constraint;
 	wl_signal_add(&wlr_pointer_constraints->events.new_constraint, &new_pointer_constraint);
 
-	// layer_shell = wlr_layer_shell_v1_create(wl_display, 4);
+	layer_shell = wlr_layer_shell_v1_create(wl_display, 4);
 
-	// new_layer_surface.notify = server_new_layer_surface;
-	// wl_signal_add(&wlr_layer_shell->events.new_surface, &new_layer_surface);
+	new_layer_surface.notify = server_new_layer_surface;
+	wl_signal_add(&layer_shell->events.new_surface, &new_layer_surface);
+
+	wlr_screencopy_manager_v1_create(wl_display);
+
+	wlr_xdg_output_manager_v1_create(wl_display, output_layout);
 
 	wl_display_run(wl_display);
 
