@@ -26,7 +26,8 @@
 
 #include <wlr/types/wlr_layer_shell_v1.h>
 
-#include <wlr/types/wlr_screencopy_v1.h>
+#include <wlr/types/wlr_ext_image_copy_capture_v1.h>
+#include <wlr/types/wlr_ext_image_capture_source_v1.h>
 
 #include <wlr/types/wlr_xdg_output_v1.h>
 
@@ -1115,7 +1116,7 @@ int main(int argc, char *argv[]) {
 	 * to dig your fingers in and play with their behavior if you want. Note that
 	 * the clients cannot set the selection directly without compositor approval,
 	 * see the handling of the request_set_selection event below.*/
-	struct wlr_compositor *compositor = wlr_compositor_create(wl_display, 5, renderer);
+	struct wlr_compositor *compositor = wlr_compositor_create(wl_display, 6, renderer);
 	wlr_subcompositor_create(wl_display);
 	wlr_data_device_manager_create(wl_display);
 
@@ -1143,7 +1144,7 @@ int main(int argc, char *argv[]) {
 	 * https://drewdevault.com/2018/07/29/Wayland-shells.html.
 	 */
 	wl_list_init(&toplevels);
-	xdg_shell = wlr_xdg_shell_create(wl_display, 3);
+	xdg_shell = wlr_xdg_shell_create(wl_display, 7);
 	new_xdg_toplevel.notify = server_new_xdg_toplevel;
 	wl_signal_add(&xdg_shell->events.new_toplevel, &new_xdg_toplevel);
 	new_xdg_popup.notify = server_new_xdg_popup;
@@ -1248,12 +1249,13 @@ int main(int argc, char *argv[]) {
 	new_pointer_constraint.notify = server_new_pointer_constraint;
 	wl_signal_add(&wlr_pointer_constraints->events.new_constraint, &new_pointer_constraint);
 
-	layer_shell = wlr_layer_shell_v1_create(wl_display, 4);
+	layer_shell = wlr_layer_shell_v1_create(wl_display, 5);
 
 	new_layer_surface.notify = server_new_layer_surface;
 	wl_signal_add(&layer_shell->events.new_surface, &new_layer_surface);
 
-	wlr_screencopy_manager_v1_create(wl_display);
+	wlr_ext_image_copy_capture_manager_v1_create(wl_display, 1);
+	wlr_ext_output_image_capture_source_manager_v1_create(wl_display, 1);
 
 	wlr_xdg_output_manager_v1_create(wl_display, output_layout);
 
