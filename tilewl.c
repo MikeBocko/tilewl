@@ -238,8 +238,6 @@ static int count_tiles(struct server_output *output)
 
 static void tile(struct server_output *output)
 {
-	active_constraint = NULL;
-
 	int n = count_tiles(output);
 
 	if (n == 0)
@@ -537,9 +535,8 @@ static struct server_toplevel *desktop_toplevel_at(double lx, double ly, struct 
 	return tree->node.data;
 }
 
-static void process_cursor_motion(uint32_t time) {
-
-	
+static void process_cursor_motion(uint32_t time)
+{
 	double sx, sy;
 	struct wlr_surface *surface = NULL;
 	struct server_toplevel *toplevel = desktop_toplevel_at(cursor->x, cursor->y, &surface, &sx, &sy);
@@ -551,32 +548,32 @@ static void process_cursor_motion(uint32_t time) {
 	{
 		focus_toplevel(toplevel);
 	}
-	if (surface) {
 
+	struct wlr_pointer_constraint_v1 *constraint = NULL;
+	if (surface)
+	{
 		wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
 		wlr_seat_pointer_notify_motion(seat, time, sx, sy);
 
-
-		struct wlr_pointer_constraint_v1 *constraint = NULL;
 		constraint = wlr_pointer_constraints_v1_constraint_for_surface(wlr_pointer_constraints, surface, seat);
-
-		if (constraint != active_constraint)
-		{
-			struct wlr_pointer_constraint_v1 *previous_constraint = active_constraint;
-			active_constraint = NULL;
-
-			if(previous_constraint) {
-				wlr_pointer_constraint_v1_send_deactivated(previous_constraint);
-			}
-
-			if(constraint) {
-				active_constraint = constraint;
-				wlr_pointer_constraint_v1_send_activated(constraint);
-			}
-		}
 
 	} else {
 		wlr_seat_pointer_clear_focus(seat);
+	}
+
+	if (constraint != active_constraint)
+	{
+		if(active_constraint)
+		{
+			wlr_pointer_constraint_v1_send_deactivated(active_constraint);
+		}
+
+		active_constraint = constraint;
+
+		if(active_constraint)
+		{
+			wlr_pointer_constraint_v1_send_activated(active_constraint);
+		}
 	}
 }
 
