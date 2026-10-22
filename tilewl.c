@@ -151,6 +151,7 @@ static void unfocus_toplevel()
 		wlr_xwayland_surface_activate(focused_toplevel->xwayland_surface, false);
 	}
 
+	wlr_seat_keyboard_notify_clear_focus(seat);
 	focused_toplevel = NULL;
 }
 
@@ -860,7 +861,6 @@ static void xwayland_dissociate(struct wl_listener *listener, void *data)
 
 static void xwayland_destroy(struct wl_listener *listener, void *data) 
 {
-	
 	struct server_toplevel *toplevel = wl_container_of(listener, toplevel, xwayland_destroy);
 
 	wl_list_remove(&toplevel->associate.link);
@@ -872,9 +872,7 @@ static void xwayland_destroy(struct wl_listener *listener, void *data)
 
 static void server_new_xwayland_surface(struct wl_listener *listener, void *data)
 {
-	
 	struct wlr_xwayland_surface *xwayland_surface = data;
-
 	
 	struct server_toplevel *toplevel = calloc(1, sizeof(*toplevel));
 	toplevel->xwayland_surface = xwayland_surface;
@@ -884,8 +882,6 @@ static void server_new_xwayland_surface(struct wl_listener *listener, void *data
 
 	toplevel->output = output;
 	toplevel->workspace = toplevel->output->active_workspace;
-
-	
 
 	toplevel->associate.notify = xwayland_associate;
 	wl_signal_add(&xwayland_surface->events.associate, &toplevel->associate);
