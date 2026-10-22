@@ -720,15 +720,14 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
 	tile(toplevel->output);
 }
 
-static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
+static void xdg_toplevel_commit(struct wl_listener *listener, void *data)
+{
 	
 	struct server_toplevel *toplevel = wl_container_of(listener, toplevel, commit);
 
 	int n = count_tiles(toplevel->output);
 	int width = toplevel->output->wlr_output->width / (n+1);
 	int height = toplevel->output->wlr_output->height;
-
-	
 
 	if (toplevel->xdg_toplevel->base->initial_commit) {
 		wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
@@ -748,18 +747,19 @@ static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
 	free(toplevel);
 }
 
-static void xdg_toplevel_request_fullscreen(struct wl_listener *listener, void *data) {
+static void xdg_toplevel_request_fullscreen(struct wl_listener *listener, void *data)
+{
 	struct server_toplevel *toplevel = wl_container_of(listener, toplevel, request_fullscreen);
 	
-	if (toplevel->xdg_toplevel->base->initialized) {
+	if (toplevel->xdg_toplevel->base->initialized)
+	{
 		wlr_xdg_toplevel_set_fullscreen(toplevel->xdg_toplevel, toplevel->xdg_toplevel->requested.fullscreen);
 	}
 }
 
-static void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
-	
+static void server_new_xdg_toplevel(struct wl_listener *listener, void *data)
+{
 	struct wlr_xdg_toplevel *xdg_toplevel = data;
-
 	
 	struct server_toplevel *toplevel = calloc(1, sizeof(*toplevel));
 	toplevel->xdg_toplevel = xdg_toplevel;
@@ -774,7 +774,6 @@ static void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
 	toplevel->scene_tree->node.data = toplevel;
 	xdg_toplevel->base->data = toplevel->scene_tree;
 
-	
 	toplevel->map.notify = xdg_toplevel_map;
 	wl_signal_add(&xdg_toplevel->base->surface->events.map, &toplevel->map);
 	toplevel->unmap.notify = xdg_toplevel_unmap;
@@ -785,7 +784,6 @@ static void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
 	toplevel->destroy.notify = xdg_toplevel_destroy;
 	wl_signal_add(&xdg_toplevel->events.destroy, &toplevel->destroy);
 
-	
 	toplevel->request_fullscreen.notify = xdg_toplevel_request_fullscreen;
 	wl_signal_add(&xdg_toplevel->events.request_fullscreen, &toplevel->request_fullscreen);
 }
