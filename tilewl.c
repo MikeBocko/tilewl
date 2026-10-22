@@ -325,7 +325,6 @@ static void switch_output()
 
 
 			wlr_cursor_warp(cursor, NULL, output_x + width/2, output_y + height/2);
-			unfocus_toplevel();
 			return;
 		}
 	}
@@ -615,9 +614,7 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
 static void server_cursor_axis(struct wl_listener *listener, void *data) {
 	struct wlr_pointer_axis_event *event = data;
 	
-	wlr_seat_pointer_notify_axis(seat,
-			event->time_msec, event->orientation, event->delta,
-			event->delta_discrete, event->source, event->relative_direction);
+	wlr_seat_pointer_notify_axis(seat, event->time_msec, event->orientation, event->delta, event->delta_discrete, event->source, event->relative_direction);
 }
 
 static void server_cursor_frame(struct wl_listener *listener, void *data) {
@@ -629,7 +626,6 @@ static void output_frame(struct wl_listener *listener, void *data) {
 
 	struct wlr_scene_output *scene_output = wlr_scene_get_scene_output(scene, output->wlr_output);
 
-	
 	wlr_scene_output_commit(scene_output, NULL);
 
 	struct timespec now;
