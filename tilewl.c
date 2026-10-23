@@ -23,6 +23,7 @@
 
 #include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/types/wlr_pointer_constraints_v1.h>
+#include <wlr/util/region.h>
 
 #include <wlr/types/wlr_layer_shell_v1.h>
 
@@ -513,9 +514,9 @@ static void seat_request_set_selection(struct wl_listener *listener, void *data)
 	wlr_seat_set_selection(seat, event->source, event->serial);
 }
 
-static struct server_toplevel *desktop_toplevel_at(double lx, double ly, struct wlr_surface **surface, double *sx, double *sy) {
-	struct wlr_scene_node *node = wlr_scene_node_at(&scene->tree.node, lx, ly, sx, sy);
-	if (node == NULL || node->type != WLR_SCENE_NODE_BUFFER) {
+static struct wlr_surface *desktop_surface_at(struct wlr_scene_node *node)
+{
+	if (!node || node->type != WLR_SCENE_NODE_BUFFER) {
 		return NULL;
 	}
 	struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
@@ -524,7 +525,13 @@ static struct server_toplevel *desktop_toplevel_at(double lx, double ly, struct 
 		return NULL;
 	}
 
-	*surface = scene_surface->surface;
+	return scene_surface->surface;
+}
+
+static struct server_toplevel *desktop_toplevel_at(struct wlr_scene_node *node)
+{
+	if(!node) return NULL;
+
 	struct wlr_scene_tree *tree = node->parent;
 	while (tree != NULL && tree->node.data == NULL) {
 		tree = tree->node.parent;
@@ -538,8 +545,9 @@ static struct server_toplevel *desktop_toplevel_at(double lx, double ly, struct 
 static void process_cursor_motion(uint32_t time)
 {
 	double sx, sy;
-	struct wlr_surface *surface = NULL;
-	struct server_toplevel *toplevel = desktop_toplevel_at(cursor->x, cursor->y, &surface, &sx, &sy);
+	struct wlr_scene_node *node = wlr_scene_node_at(&scene->tree.node, cursor->x, cursor->y, &sx, &sy);
+	struct wlr_surface *surface = desktop_surface_at(node);
+	struct server_toplevel *toplevel = desktop_toplevel_at(node);
 
 	if (!toplevel) {
 		wlr_cursor_set_xcursor(cursor, cursor_mgr, "default");
@@ -577,14 +585,27 @@ static void process_cursor_motion(uint32_t time)
 	}
 }
 
-static void server_cursor_motion(struct wl_listener *listener, void *data) {
+static void server_cursor_motion(struct wl_listener *listener, void *data)
+{
 	struct wlr_pointer_motion_event *event = data;
 
-	if(!active_constraint || active_constraint->type != WLR_POINTER_CONSTRAINT_V1_LOCKED)
+	if(!active_constraint)
 	{
 		wlr_cursor_move(cursor, &event->pointer->base, event->delta_x, event->delta_y);
 	}
+	else if(active_constraint->type == WLR_POINTER_CONSTRAINT_V1_CONFINED)
+	{
+		double sx, sy;
+		struct wlr_scene_node *node = wlr_scene_node_at(&scene->tree.node, cursor->x, cursor->y, &sx, &sy);
+		struct wlr_surface *surface = desktop_surface_at(node);
 
+		if (surface == active_constraint->surface)
+		{
+			double confined_x, confined_y;
+			wlr_region_confine(&active_constraint->region, sx, sy, sx + event->delta_x, sy + event->delta_y, &confined_x, &confined_y);
+			wlr_cursor_move(cursor, &event->pointer->base, confined_x - sx, confined_y - sy);
+		}
+	}
 
 	wlr_relative_pointer_manager_v1_send_relative_motion(
 		relative_pointer_manager,
@@ -891,8 +912,11 @@ static void server_new_xwayland_surface(struct wl_listener *listener, void *data
 static void pointer_constraint_destroy(struct wl_listener *listener, void *data)
 {
 	struct server_pointer_constraint *constraint = wl_container_of(listener, constraint, destroy);
-	
-	active_constraint = NULL;
+
+	if(constraint->constraint == active_constraint)
+	{
+		active_constraint = NULL;
+	}
 
 	wl_list_remove(&constraint->destroy.link);
 
