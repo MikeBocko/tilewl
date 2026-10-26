@@ -78,6 +78,11 @@ struct server_keyboard {
 	struct wl_listener destroy;
 };
 
+struct server_pointer_constraint {
+	struct wlr_pointer_constraint_v1 *constraint;
+	struct wl_listener destroy;
+};
+
 struct layer_surface {
 	struct wlr_layer_surface_v1 *surface;
 	struct wlr_scene_layer_surface_v1 *scene_surface;
@@ -119,6 +124,7 @@ static struct server_toplevel *focused_toplevel;
 static struct wlr_relative_pointer_manager_v1 *relative_pointer_manager;
 static struct wlr_pointer_constraints_v1 *wlr_pointer_constraints;
 static struct wlr_pointer_constraint_v1 *active_constraint;
+static struct wl_listener new_pointer_constraint;
 
 static struct wl_listener new_layer_surface;
 
@@ -557,6 +563,7 @@ static void process_cursor_motion(uint32_t time)
 		if(active_constraint)
 		{
 			wlr_pointer_constraint_v1_send_deactivated(active_constraint);
+			active_constraint->data = NULL;
 		}
 
 		active_constraint = constraint;
@@ -564,6 +571,7 @@ static void process_cursor_motion(uint32_t time)
 		if(active_constraint)
 		{
 			wlr_pointer_constraint_v1_send_activated(active_constraint);
+			active_constraint->data = node;
 		}
 	}
 }
@@ -578,13 +586,18 @@ static void server_cursor_motion(struct wl_listener *listener, void *data)
 	}
 	else if(active_constraint->type == WLR_POINTER_CONSTRAINT_V1_CONFINED)
 	{
-		double sx, sy;
-		wlr_scene_node_at(&scene->tree.node, cursor->x, cursor->y, &sx, &sy);
-
-		double confined_x, confined_y;
-		if(wlr_region_confine(&active_constraint->region, sx, sy, sx + event->delta_x, sy + event->delta_y, &confined_x, &confined_y))
+		struct wlr_scene_node *node = active_constraint->data;
+		int lx, ly;
+		if (wlr_scene_node_coords(node, &lx, &ly))
 		{
-			wlr_cursor_move(cursor, &event->pointer->base, confined_x - sx, confined_y - sy);
+			double sx = cursor->x - lx;
+			double sy = cursor->y - ly;
+		
+			double confined_x, confined_y;
+			if(wlr_region_confine(&active_constraint->region, sx, sy, sx + event->delta_x, sy + event->delta_y, &confined_x, &confined_y))
+			{
+				wlr_cursor_move(cursor, &event->pointer->base, confined_x - sx, confined_y - sy);
+			}
 		}
 	}
 
@@ -882,12 +895,35 @@ static void server_new_xwayland_surface(struct wl_listener *listener, void *data
 	toplevel->associate.notify = xwayland_associate;
 	wl_signal_add(&xwayland_surface->events.associate, &toplevel->associate);
 
-
 	toplevel->dissociate.notify = xwayland_dissociate;
 	wl_signal_add(&xwayland_surface->events.dissociate, &toplevel->dissociate);
 
 	toplevel->xwayland_destroy.notify = xwayland_destroy;
 	wl_signal_add(&xwayland_surface->events.destroy, &toplevel->xwayland_destroy);
+}
+
+static void pointer_constraint_destroy(struct wl_listener *listener, void *data)
+{
+	struct server_pointer_constraint *constraint = wl_container_of(listener, constraint, destroy);
+
+	if(constraint->constraint == active_constraint)
+	{
+		active_constraint = NULL;
+	}
+
+	wl_list_remove(&constraint->destroy.link);
+
+	free(constraint);
+}
+
+static void server_new_pointer_constraint(struct wl_listener *listener, void *data)
+{
+	struct server_pointer_constraint *constraint = calloc(1, sizeof(*constraint));
+
+	constraint->constraint = data;
+
+	constraint->destroy.notify = pointer_constraint_destroy;
+	wl_signal_add(&constraint->constraint->events.destroy, &constraint->destroy);
 }
 
 static void layer_surface_commit(struct wl_listener *listener, void *data)
@@ -915,7 +951,6 @@ static void layer_surface_commit(struct wl_listener *listener, void *data)
 static void layer_surface_destroy(struct wl_listener *listener, void *data)
 {
 	struct layer_surface *layer = wl_container_of(listener, layer, destroy);
-	
 
 	wl_list_remove(&layer->commit.link);
 	wl_list_remove(&layer->destroy.link);
@@ -1041,6 +1076,9 @@ int main(int argc, char *argv[]) {
 
 	//pointer constraints
 	wlr_pointer_constraints = wlr_pointer_constraints_v1_create(wl_display);
+
+	new_pointer_constraint.notify = server_new_pointer_constraint;
+	wl_signal_add(&wlr_pointer_constraints->events.new_constraint, &new_pointer_constraint);
 
 	struct wlr_layer_shell_v1 *layer_shell = wlr_layer_shell_v1_create(wl_display, 5);
 
