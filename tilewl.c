@@ -109,10 +109,7 @@ static struct wl_list keyboards;
 static struct wl_list outputs;
 static struct wl_listener new_output;
 
-static struct wlr_xdg_shell *xdg_shell;
 static struct wlr_seat *seat;
-static struct wl_display *wl_display;
-static struct wlr_backend *backend;
 static struct wlr_renderer *renderer;
 static struct wlr_allocator *allocator;
 static struct wlr_scene *scene;
@@ -129,11 +126,9 @@ static struct wlr_pointer_constraints_v1 *wlr_pointer_constraints;
 static struct wlr_pointer_constraint_v1 *active_constraint;
 static struct wl_listener new_pointer_constraint;
 
-static struct wlr_layer_shell_v1 *layer_shell;
 static struct wl_listener new_layer_surface;
 
 //xwayland
-static struct wlr_xwayland *xwayland;
 static struct wl_listener new_xwayland_surface;
 
 static void unfocus_toplevel()
@@ -983,8 +978,8 @@ static void server_new_layer_surface(struct wl_listener *listener, void *data)
 int main(int argc, char *argv[]) {
 	wlr_log_init(WLR_ERROR, NULL);
 
-	wl_display = wl_display_create();
-	backend = wlr_backend_autocreate(wl_display_get_event_loop(wl_display), NULL);
+	struct wl_display *wl_display = wl_display_create();
+	struct wlr_backend *backend = wlr_backend_autocreate(wl_display_get_event_loop(wl_display), NULL);
 	if (backend == NULL) {
 		wlr_log(WLR_ERROR, "failed to create wlr_backend");
 		return 1;
@@ -1017,7 +1012,7 @@ int main(int argc, char *argv[]) {
 	scene_layout = wlr_scene_attach_output_layout(scene, output_layout);
 
 	wl_list_init(&toplevels);
-	xdg_shell = wlr_xdg_shell_create(wl_display, 7);
+	struct wlr_xdg_shell *xdg_shell = wlr_xdg_shell_create(wl_display, 7);
 	new_xdg_toplevel.notify = server_new_xdg_toplevel;
 	wl_signal_add(&xdg_shell->events.new_toplevel, &new_xdg_toplevel);
 	new_xdg_popup.notify = server_new_xdg_popup;
@@ -1072,7 +1067,7 @@ int main(int argc, char *argv[]) {
 	setenv("WAYLAND_DISPLAY", socket, true);
 
 	//start xwayland
-	xwayland = wlr_xwayland_create(wl_display, compositor, true);
+	struct wlr_xwayland *xwayland = wlr_xwayland_create(wl_display, compositor, true);
 	wlr_xwayland_set_seat(xwayland, seat);
 	setenv("DISPLAY", xwayland->display_name, true);
 
@@ -1088,7 +1083,7 @@ int main(int argc, char *argv[]) {
 	new_pointer_constraint.notify = server_new_pointer_constraint;
 	wl_signal_add(&wlr_pointer_constraints->events.new_constraint, &new_pointer_constraint);
 
-	layer_shell = wlr_layer_shell_v1_create(wl_display, 5);
+	struct wlr_layer_shell_v1 *layer_shell = wlr_layer_shell_v1_create(wl_display, 5);
 
 	new_layer_surface.notify = server_new_layer_surface;
 	wl_signal_add(&layer_shell->events.new_surface, &new_layer_surface);
