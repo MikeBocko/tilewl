@@ -78,11 +78,6 @@ struct server_keyboard {
 	struct wl_listener destroy;
 };
 
-struct server_pointer_constraint {
-	struct wlr_pointer_constraint_v1 *constraint;
-	struct wl_listener destroy;
-};
-
 struct layer_surface {
 	struct wlr_layer_surface_v1 *surface;
 	struct wlr_scene_layer_surface_v1 *scene_surface;
@@ -124,7 +119,6 @@ static struct server_toplevel *focused_toplevel;
 static struct wlr_relative_pointer_manager_v1 *relative_pointer_manager;
 static struct wlr_pointer_constraints_v1 *wlr_pointer_constraints;
 static struct wlr_pointer_constraint_v1 *active_constraint;
-static struct wl_listener new_pointer_constraint;
 
 static struct wl_listener new_layer_surface;
 
@@ -544,13 +538,7 @@ static void process_cursor_motion(uint32_t time)
 	struct wlr_surface *surface = desktop_surface_at(node);
 	struct server_toplevel *toplevel = desktop_toplevel_at(node);
 
-	if (!toplevel) {
-		wlr_cursor_set_xcursor(cursor, cursor_mgr, "default");
-	}
-	else
-	{
-		focus_toplevel(toplevel);
-	}
+	if(toplevel) focus_toplevel(toplevel);
 
 	struct wlr_pointer_constraint_v1 *constraint = NULL;
 	if (surface)
@@ -591,13 +579,11 @@ static void server_cursor_motion(struct wl_listener *listener, void *data)
 	else if(active_constraint->type == WLR_POINTER_CONSTRAINT_V1_CONFINED)
 	{
 		double sx, sy;
-		struct wlr_scene_node *node = wlr_scene_node_at(&scene->tree.node, cursor->x, cursor->y, &sx, &sy);
-		struct wlr_surface *surface = desktop_surface_at(node);
+		wlr_scene_node_at(&scene->tree.node, cursor->x, cursor->y, &sx, &sy);
 
-		if (surface == active_constraint->surface)
+		double confined_x, confined_y;
+		if(wlr_region_confine(&active_constraint->region, sx, sy, sx + event->delta_x, sy + event->delta_y, &confined_x, &confined_y))
 		{
-			double confined_x, confined_y;
-			wlr_region_confine(&active_constraint->region, sx, sy, sx + event->delta_x, sy + event->delta_y, &confined_x, &confined_y);
 			wlr_cursor_move(cursor, &event->pointer->base, confined_x - sx, confined_y - sy);
 		}
 	}
@@ -904,30 +890,6 @@ static void server_new_xwayland_surface(struct wl_listener *listener, void *data
 	wl_signal_add(&xwayland_surface->events.destroy, &toplevel->xwayland_destroy);
 }
 
-static void pointer_constraint_destroy(struct wl_listener *listener, void *data)
-{
-	struct server_pointer_constraint *constraint = wl_container_of(listener, constraint, destroy);
-
-	if(constraint->constraint == active_constraint)
-	{
-		active_constraint = NULL;
-	}
-
-	wl_list_remove(&constraint->destroy.link);
-
-	free(constraint);
-}
-
-static void server_new_pointer_constraint(struct wl_listener *listener, void *data)
-{
-	struct server_pointer_constraint *constraint = calloc(1, sizeof(*constraint));
-
-	constraint->constraint = data;
-
-	constraint->destroy.notify = pointer_constraint_destroy;
-	wl_signal_add(&constraint->constraint->events.destroy, &constraint->destroy);
-}
-
 static void layer_surface_commit(struct wl_listener *listener, void *data)
 {
 	struct layer_surface *layer = wl_container_of(listener, layer, commit);
@@ -1080,9 +1042,6 @@ int main(int argc, char *argv[]) {
 	//pointer constraints
 	wlr_pointer_constraints = wlr_pointer_constraints_v1_create(wl_display);
 
-	new_pointer_constraint.notify = server_new_pointer_constraint;
-	wl_signal_add(&wlr_pointer_constraints->events.new_constraint, &new_pointer_constraint);
-
 	struct wlr_layer_shell_v1 *layer_shell = wlr_layer_shell_v1_create(wl_display, 5);
 
 	new_layer_surface.notify = server_new_layer_surface;
@@ -1092,6 +1051,8 @@ int main(int argc, char *argv[]) {
 	wlr_ext_output_image_capture_source_manager_v1_create(wl_display, 1);
 
 	wlr_xdg_output_manager_v1_create(wl_display, output_layout);
+
+	wlr_cursor_set_xcursor(cursor, cursor_mgr, "default");
 
 	wl_display_run(wl_display);
 
