@@ -516,9 +516,8 @@ static struct wlr_surface *desktop_surface_at(struct wlr_scene_node *node)
 	}
 	struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
 	struct wlr_scene_surface *scene_surface = wlr_scene_surface_try_from_buffer(scene_buffer);
-	if (!scene_surface) {
-		return NULL;
-	}
+
+	if (!scene_surface) return NULL;
 
 	return scene_surface->surface;
 }
@@ -544,7 +543,7 @@ static void process_cursor_motion(uint32_t time)
 	struct wlr_surface *surface = desktop_surface_at(node);
 	struct server_toplevel *toplevel = desktop_toplevel_at(node);
 
-	if(toplevel) focus_toplevel(toplevel);
+	if(toplevel && toplevel != focused_toplevel) focus_toplevel(toplevel);
 
 	struct wlr_pointer_constraint_v1 *constraint = NULL;
 	if (surface)
@@ -736,6 +735,7 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data)
 
 	if (toplevel->xdg_toplevel->base->initial_commit) {
 		wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
+		wlr_xdg_toplevel_set_tiled(toplevel->xdg_toplevel, WLR_EDGE_TOP | WLR_EDGE_BOTTOM | WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
 	}
 }
 
