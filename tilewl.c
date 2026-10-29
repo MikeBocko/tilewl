@@ -563,7 +563,6 @@ static void process_cursor_motion(uint32_t time)
 		if(active_constraint)
 		{
 			wlr_pointer_constraint_v1_send_deactivated(active_constraint);
-			active_constraint->data = NULL;
 		}
 
 		active_constraint = constraint;
@@ -733,15 +732,10 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
 
 static void xdg_toplevel_commit(struct wl_listener *listener, void *data)
 {
-	
 	struct server_toplevel *toplevel = wl_container_of(listener, toplevel, commit);
 
-	int n = count_tiles(toplevel->output);
-	int width = toplevel->output->wlr_output->width / (n+1);
-	int height = toplevel->output->wlr_output->height;
-
 	if (toplevel->xdg_toplevel->base->initial_commit) {
-		wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
+		wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
 	}
 }
 
