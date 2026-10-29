@@ -208,283 +208,8 @@ static void kill_top_level()
 	wlr_xwayland_surface_close(focused_toplevel->xwayland_surface);
 }
 
-static int count_tiles(struct server_output *output)
-{
-	int n = 0;
-
-	struct server_toplevel *toplevel;
-	wl_list_for_each(toplevel, &toplevels, link)
-	{
-		if(toplevel->xwayland_surface && toplevel->xwayland_surface->override_redirect) continue;
-
-		if(toplevel->output != output) continue;
-		
-		if(toplevel->workspace == output->active_workspace)
-		{
-			wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
-			n++;
-		}
-		else
-		{
-			wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
-		}
-	}
-
-	return n;
-}
-
-static void tile(struct server_output *output)
-{
-	int n = count_tiles(output);
-
-	if (n == 0)
-	{
-		return;
-	}
-
-	struct wlr_output_layout_output *lo = wlr_output_layout_get(output_layout, output->wlr_output);
-
-	int output_x = lo->x;
-	int output_y = lo->y;
-
-	
-	int height = output->wlr_output->height;
-	int width = output->wlr_output->width / n;
-
-	int i = 0;
-	struct server_toplevel *toplevel;
-	wl_list_for_each(toplevel, &toplevels, link)
-	{
-		if(toplevel->output != output) continue;
-	
-		if(toplevel->workspace != output->active_workspace) continue;
-
-		if(toplevel->xwayland_surface && toplevel->xwayland_surface->override_redirect) continue;
-
-		if(toplevel->xwayland_surface)
-		{
-			wlr_xwayland_surface_configure(toplevel->xwayland_surface, width * i, output_y, width, height);
-		}
-		else
-		{
-			wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
-		}
-		wlr_scene_node_set_position(&toplevel->scene_tree->node, output_x + width * i, output_y);
-		i++;
-	}
-}
-
-static void switch_workspace(int workspace)
-{
-	struct wlr_output *wlr_output = wlr_output_layout_output_at(output_layout, cursor->x, cursor->y);
-	struct server_output *output = wlr_output->data;
-
-	output->active_workspace = workspace;
-
-	tile(output);
-	unfocus_toplevel();
-}
-
-static void switch_toplevel_workspace(int workspace)
-{
-	if (!focused_toplevel)
-	{
-		return;
-	}
-
-	focused_toplevel->workspace = workspace;
-
-	tile(focused_toplevel->output);
-	unfocus_toplevel();
-}
-
-
-static void switch_output()
-{
-	struct wlr_output *wlr_output = wlr_output_layout_output_at(output_layout, cursor->x, cursor->y);
-	struct server_output *output = wlr_output->data;
-
-	struct server_output *next_output;
-
-	wl_list_for_each(next_output, &outputs, link)
-	{
-		if(next_output != output)
-		{
-
-			struct wlr_output_layout_output *lo = wlr_output_layout_get(output_layout, next_output->wlr_output);
-
-			int output_x = lo->x;
-			int output_y = lo->y;
-
-			int width = next_output->wlr_output->width;
-			int height = next_output->wlr_output->height;
-
-
-			wlr_cursor_warp(cursor, NULL, output_x + width/2, output_y + height/2);
-			return;
-		}
-	}
-}
-
-static void switch_toplevel_output()
-{
-	if (!focused_toplevel)
-	{
-		return;
-	}
-
-	struct server_output *prev_output = focused_toplevel->output;
-	struct server_output *next_output;
-
-	wl_list_for_each(next_output, &outputs, link)
-	{
-		if(next_output != prev_output)
-		{
-			focused_toplevel->output = next_output;
-			focused_toplevel->workspace = next_output->active_workspace;
-
-			tile(prev_output);
-			tile(next_output);
-
-			return;
-		}
-	}
-}
-
-static void keyboard_handle_modifiers(struct wl_listener *listener, void *data) {
-	struct server_keyboard *keyboard = wl_container_of(listener, keyboard, modifiers);
-	
-	wlr_seat_set_keyboard(seat, keyboard->wlr_keyboard);
-	
-	wlr_seat_keyboard_notify_modifiers(seat, &keyboard->wlr_keyboard->modifiers);
-}
-
-static bool handle_keybinding(xkb_keysym_t sym)
-{
-	static const char *term[] = {"foot", NULL};
-	static const char *browser[] = {"firefox", NULL};
-	static const char *steam[] = {"steam", NULL};
-	static const char *snip[] = {"screenshot", NULL};
-	
-	switch (sym) 
-	{
-		case XKB_KEY_q:				spawn(term);		break;
-		case XKB_KEY_e:				spawn(browser); 	break;
-		case XKB_KEY_s:				spawn(steam); 		break;
-		case XKB_KEY_Delete:		spawn(snip); 		break;
-
-		case XKB_KEY_c:				kill_top_level();	break;
-
-		case XKB_KEY_1: 			switch_workspace(1); break;
-		case XKB_KEY_2: 			switch_workspace(2); break;
-		case XKB_KEY_3: 			switch_workspace(3); break;
-		case XKB_KEY_4: 			switch_workspace(4); break;
-		case XKB_KEY_5: 			switch_workspace(5); break;
-
-		case XKB_KEY_exclam:		switch_toplevel_workspace(1); break;
-		case XKB_KEY_at: 			switch_toplevel_workspace(2); break;
-		case XKB_KEY_numbersign: 	switch_toplevel_workspace(3); break;
-		case XKB_KEY_dollar: 		switch_toplevel_workspace(4); break;
-		case XKB_KEY_percent: 		switch_toplevel_workspace(5); break;
-
-		case XKB_KEY_Tab:			switch_output(); break;
-		case XKB_KEY_grave:			switch_toplevel_output(); break;
-
-		default: return false;
-	}
-	return true;
-}
-
-static void keyboard_handle_key(
-		struct wl_listener *listener, void *data) {
-	
-	struct server_keyboard *keyboard = wl_container_of(listener, keyboard, key);
-	struct wlr_keyboard_key_event *event = data;
-
-	
-	uint32_t keycode = event->keycode + 8;
-	
-	const xkb_keysym_t *syms;																												
-	int nsyms = xkb_state_key_get_syms(keyboard->wlr_keyboard->xkb_state, keycode, &syms);
-
-	bool handled = false;
-	uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
-	if ((modifiers & WLR_MODIFIER_ALT) && event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
-
-		for (int i = 0; i < nsyms; i++) {
-			handled = handle_keybinding(syms[i]);
-		}
-	}
-
-	if (!handled) {
-		
-		wlr_seat_set_keyboard(seat, keyboard->wlr_keyboard);
-		wlr_seat_keyboard_notify_key(seat, event->time_msec,
-			event->keycode, event->state);
-	}
-}
-
-static void keyboard_handle_destroy(struct wl_listener *listener, void *data) {
-	
-	struct server_keyboard *keyboard = wl_container_of(listener, keyboard, destroy);
-	
-	wl_list_remove(&keyboard->modifiers.link);
-	wl_list_remove(&keyboard->key.link);
-	wl_list_remove(&keyboard->destroy.link);
-	wl_list_remove(&keyboard->link);
-	free(keyboard);
-}
-
-static void server_new_keyboard(struct wlr_input_device *device) {
-	struct wlr_keyboard *wlr_keyboard = wlr_keyboard_from_input_device(device);
-
-	struct server_keyboard *keyboard = calloc(1, sizeof(*keyboard));
-	keyboard->wlr_keyboard = wlr_keyboard;
-
-	struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-	struct xkb_keymap *keymap = xkb_keymap_new_from_names(context, NULL,
-		XKB_KEYMAP_COMPILE_NO_FLAGS);
-
-	wlr_keyboard_set_keymap(wlr_keyboard, keymap);
-	xkb_keymap_unref(keymap);
-	xkb_context_unref(context);
-	wlr_keyboard_set_repeat_info(wlr_keyboard, 25, 600);
-
-	
-	keyboard->modifiers.notify = keyboard_handle_modifiers;
-	wl_signal_add(&wlr_keyboard->events.modifiers, &keyboard->modifiers);
-	keyboard->key.notify = keyboard_handle_key;
-	wl_signal_add(&wlr_keyboard->events.key, &keyboard->key);
-	keyboard->destroy.notify = keyboard_handle_destroy;
-	wl_signal_add(&device->events.destroy, &keyboard->destroy);
-
-	wlr_seat_set_keyboard(seat, keyboard->wlr_keyboard);
-
-	
-	wl_list_insert(&keyboards, &keyboard->link);
-}
-
 static void server_new_pointer(struct wlr_input_device *device) {
 	wlr_cursor_attach_input_device(cursor, device);
-}
-
-static void server_new_input(struct wl_listener *listener, void *data) {
-	struct wlr_input_device *device = data;
-	switch (device->type) {
-	case WLR_INPUT_DEVICE_KEYBOARD:
-		server_new_keyboard(device);
-		break;
-	case WLR_INPUT_DEVICE_POINTER:
-		server_new_pointer(device);
-		break;
-	default:
-		break;
-	}
-	uint32_t caps = WL_SEAT_CAPABILITY_POINTER;
-	if (!wl_list_empty(&keyboards)) {
-		caps |= WL_SEAT_CAPABILITY_KEYBOARD;
-	}
-	wlr_seat_set_capabilities(seat, caps);
 }
 
 static void seat_request_cursor(struct wl_listener *listener, void *data) {
@@ -632,6 +357,282 @@ static void server_cursor_axis(struct wl_listener *listener, void *data) {
 
 static void server_cursor_frame(struct wl_listener *listener, void *data) {
 	wlr_seat_pointer_notify_frame(seat);
+}
+
+static int count_tiles(struct server_output *output)
+{
+	int n = 0;
+
+	struct server_toplevel *toplevel;
+	wl_list_for_each(toplevel, &toplevels, link)
+	{
+		if(toplevel->xwayland_surface && toplevel->xwayland_surface->override_redirect) continue;
+
+		if(toplevel->output != output) continue;
+		
+		if(toplevel->workspace == output->active_workspace)
+		{
+			wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
+			n++;
+		}
+		else
+		{
+			wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
+		}
+	}
+
+	return n;
+}
+
+static void tile(struct server_output *output)
+{
+	int n = count_tiles(output);
+
+	if (n == 0)
+	{
+		return;
+	}
+
+	struct wlr_output_layout_output *lo = wlr_output_layout_get(output_layout, output->wlr_output);
+
+	int output_x = lo->x;
+	int output_y = lo->y;
+
+	
+	int height = output->wlr_output->height;
+	int width = output->wlr_output->width / n;
+
+	int i = 0;
+	struct server_toplevel *toplevel;
+	wl_list_for_each(toplevel, &toplevels, link)
+	{
+		if(toplevel->output != output) continue;
+	
+		if(toplevel->workspace != output->active_workspace) continue;
+
+		if(toplevel->xwayland_surface && toplevel->xwayland_surface->override_redirect) continue;
+
+		if(toplevel->xwayland_surface)
+		{
+			wlr_xwayland_surface_configure(toplevel->xwayland_surface, width * i, output_y, width, height);
+		}
+		else
+		{
+			wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
+		}
+		wlr_scene_node_set_position(&toplevel->scene_tree->node, output_x + width * i, output_y);
+		i++;
+	}
+	process_cursor_motion(0);
+}
+
+static void switch_workspace(int workspace)
+{
+	struct wlr_output *wlr_output = wlr_output_layout_output_at(output_layout, cursor->x, cursor->y);
+	struct server_output *output = wlr_output->data;
+
+	output->active_workspace = workspace;
+
+	tile(output);
+	unfocus_toplevel();
+}
+
+static void switch_toplevel_workspace(int workspace)
+{
+	if (!focused_toplevel)
+	{
+		return;
+	}
+
+	focused_toplevel->workspace = workspace;
+
+	tile(focused_toplevel->output);
+	unfocus_toplevel();
+}
+
+static void switch_output()
+{
+	struct wlr_output *wlr_output = wlr_output_layout_output_at(output_layout, cursor->x, cursor->y);
+	struct server_output *output = wlr_output->data;
+
+	struct server_output *next_output;
+
+	wl_list_for_each(next_output, &outputs, link)
+	{
+		if(next_output != output)
+		{
+
+			struct wlr_output_layout_output *lo = wlr_output_layout_get(output_layout, next_output->wlr_output);
+
+			int output_x = lo->x;
+			int output_y = lo->y;
+
+			int width = next_output->wlr_output->width;
+			int height = next_output->wlr_output->height;
+
+
+			wlr_cursor_warp(cursor, NULL, output_x + width/2, output_y + height/2);
+			process_cursor_motion(0);
+			return;
+		}
+	}
+}
+
+static void switch_toplevel_output()
+{
+	if (!focused_toplevel)
+	{
+		return;
+	}
+
+	struct server_output *prev_output = focused_toplevel->output;
+	struct server_output *next_output;
+
+	wl_list_for_each(next_output, &outputs, link)
+	{
+		if(next_output != prev_output)
+		{
+			focused_toplevel->output = next_output;
+			focused_toplevel->workspace = next_output->active_workspace;
+
+			tile(prev_output);
+			tile(next_output);
+
+			return;
+		}
+	}
+}
+
+static void keyboard_handle_modifiers(struct wl_listener *listener, void *data) {
+	struct server_keyboard *keyboard = wl_container_of(listener, keyboard, modifiers);
+	
+	wlr_seat_set_keyboard(seat, keyboard->wlr_keyboard);
+	
+	wlr_seat_keyboard_notify_modifiers(seat, &keyboard->wlr_keyboard->modifiers);
+}
+
+static bool handle_keybinding(xkb_keysym_t sym)
+{
+	static const char *term[] = {"foot", NULL};
+	static const char *browser[] = {"firefox", NULL};
+	static const char *steam[] = {"steam", NULL};
+	static const char *snip[] = {"screenshot", NULL};
+	
+	switch (sym) 
+	{
+		case XKB_KEY_q:				spawn(term);		break;
+		case XKB_KEY_e:				spawn(browser); 	break;
+		case XKB_KEY_s:				spawn(steam); 		break;
+		case XKB_KEY_Delete:		spawn(snip); 		break;
+
+		case XKB_KEY_c:				kill_top_level();	break;
+
+		case XKB_KEY_1: 			switch_workspace(1); break;
+		case XKB_KEY_2: 			switch_workspace(2); break;
+		case XKB_KEY_3: 			switch_workspace(3); break;
+		case XKB_KEY_4: 			switch_workspace(4); break;
+		case XKB_KEY_5: 			switch_workspace(5); break;
+
+		case XKB_KEY_exclam:		switch_toplevel_workspace(1); break;
+		case XKB_KEY_at: 			switch_toplevel_workspace(2); break;
+		case XKB_KEY_numbersign: 	switch_toplevel_workspace(3); break;
+		case XKB_KEY_dollar: 		switch_toplevel_workspace(4); break;
+		case XKB_KEY_percent: 		switch_toplevel_workspace(5); break;
+
+		case XKB_KEY_Tab:			switch_output(); break;
+		case XKB_KEY_grave:			switch_toplevel_output(); break;
+
+		default: return false;
+	}
+	return true;
+}
+
+static void keyboard_handle_key(
+		struct wl_listener *listener, void *data) {
+	
+	struct server_keyboard *keyboard = wl_container_of(listener, keyboard, key);
+	struct wlr_keyboard_key_event *event = data;
+
+	
+	uint32_t keycode = event->keycode + 8;
+	
+	const xkb_keysym_t *syms;																												
+	int nsyms = xkb_state_key_get_syms(keyboard->wlr_keyboard->xkb_state, keycode, &syms);
+
+	bool handled = false;
+	uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
+	if ((modifiers & WLR_MODIFIER_ALT) && event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+
+		for (int i = 0; i < nsyms; i++) {
+			handled = handle_keybinding(syms[i]);
+		}
+	}
+
+	if (!handled) {
+		
+		wlr_seat_set_keyboard(seat, keyboard->wlr_keyboard);
+		wlr_seat_keyboard_notify_key(seat, event->time_msec,
+			event->keycode, event->state);
+	}
+}
+
+static void keyboard_handle_destroy(struct wl_listener *listener, void *data) {
+	
+	struct server_keyboard *keyboard = wl_container_of(listener, keyboard, destroy);
+	
+	wl_list_remove(&keyboard->modifiers.link);
+	wl_list_remove(&keyboard->key.link);
+	wl_list_remove(&keyboard->destroy.link);
+	wl_list_remove(&keyboard->link);
+	free(keyboard);
+}
+
+static void server_new_keyboard(struct wlr_input_device *device) {
+	struct wlr_keyboard *wlr_keyboard = wlr_keyboard_from_input_device(device);
+
+	struct server_keyboard *keyboard = calloc(1, sizeof(*keyboard));
+	keyboard->wlr_keyboard = wlr_keyboard;
+
+	struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+	struct xkb_keymap *keymap = xkb_keymap_new_from_names(context, NULL,
+		XKB_KEYMAP_COMPILE_NO_FLAGS);
+
+	wlr_keyboard_set_keymap(wlr_keyboard, keymap);
+	xkb_keymap_unref(keymap);
+	xkb_context_unref(context);
+	wlr_keyboard_set_repeat_info(wlr_keyboard, 25, 600);
+
+	
+	keyboard->modifiers.notify = keyboard_handle_modifiers;
+	wl_signal_add(&wlr_keyboard->events.modifiers, &keyboard->modifiers);
+	keyboard->key.notify = keyboard_handle_key;
+	wl_signal_add(&wlr_keyboard->events.key, &keyboard->key);
+	keyboard->destroy.notify = keyboard_handle_destroy;
+	wl_signal_add(&device->events.destroy, &keyboard->destroy);
+
+	wlr_seat_set_keyboard(seat, keyboard->wlr_keyboard);
+
+	
+	wl_list_insert(&keyboards, &keyboard->link);
+}
+
+static void server_new_input(struct wl_listener *listener, void *data) {
+	struct wlr_input_device *device = data;
+	switch (device->type) {
+	case WLR_INPUT_DEVICE_KEYBOARD:
+		server_new_keyboard(device);
+		break;
+	case WLR_INPUT_DEVICE_POINTER:
+		server_new_pointer(device);
+		break;
+	default:
+		break;
+	}
+	uint32_t caps = WL_SEAT_CAPABILITY_POINTER;
+	if (!wl_list_empty(&keyboards)) {
+		caps |= WL_SEAT_CAPABILITY_KEYBOARD;
+	}
+	wlr_seat_set_capabilities(seat, caps);
 }
 
 static void output_frame(struct wl_listener *listener, void *data) {
