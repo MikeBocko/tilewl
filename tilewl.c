@@ -234,40 +234,38 @@ static void seat_request_set_selection(struct wl_listener *listener, void *data)
 	wlr_seat_set_selection(seat, event->source, event->serial);
 }
 
-static struct wlr_surface *desktop_surface_at(struct wlr_scene_node *node)
-{
-	if (!node || node->type != WLR_SCENE_NODE_BUFFER) {
-		return NULL;
-	}
-	struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
-	struct wlr_scene_surface *scene_surface = wlr_scene_surface_try_from_buffer(scene_buffer);
-
-	if (!scene_surface) return NULL;
-
-	return scene_surface->surface;
-}
-
-static struct server_toplevel *desktop_toplevel_at(struct wlr_scene_node *node)
-{
-	if(!node) return NULL;
-
-	struct wlr_scene_tree *tree = node->parent;
-	while (tree != NULL && tree->node.data == NULL) {
-		tree = tree->node.parent;
-	}
-
-	if (!tree) return NULL;
-
-	return tree->node.data;
-}
-
 static void process_cursor_motion(uint32_t time)
 {
 	double sx, sy;
 	struct wlr_scene_node *node = wlr_scene_node_at(&scene->tree.node, cursor->x, cursor->y, &sx, &sy);
-	struct wlr_surface *surface = desktop_surface_at(node);
-	struct server_toplevel *toplevel = desktop_toplevel_at(node);
 
+	struct wlr_surface *surface = NULL;
+	struct server_toplevel *toplevel = NULL;
+
+	if (node)
+	{
+		if (node->type == WLR_SCENE_NODE_BUFFER)
+		{
+			struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
+			struct wlr_scene_surface *scene_surface = wlr_scene_surface_try_from_buffer(scene_buffer);
+
+			if (scene_surface)
+			{
+				surface = scene_surface->surface;
+			}
+		}
+		
+		struct wlr_scene_tree *tree = node->parent;
+		while (tree != NULL && tree->node.data == NULL) {
+			tree = tree->node.parent;
+		}
+
+		if (tree)
+		{
+			toplevel = tree->node.data;
+		}
+	}
+		
 	if(toplevel && toplevel != focused_toplevel) focus_toplevel(toplevel);
 
 	struct wlr_pointer_constraint_v1 *constraint = NULL;
