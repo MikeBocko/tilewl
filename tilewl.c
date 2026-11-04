@@ -543,8 +543,7 @@ static bool handle_keybinding(xkb_keysym_t sym)
 	return true;
 }
 
-static void keyboard_handle_key(
-		struct wl_listener *listener, void *data) {
+static void keyboard_handle_key(struct wl_listener *listener, void *data) {
 	
 	struct server_keyboard *keyboard = wl_container_of(listener, keyboard, key);
 	struct wlr_keyboard_key_event *event = data;
@@ -557,7 +556,7 @@ static void keyboard_handle_key(
 
 	bool handled = false;
 	uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->wlr_keyboard);
-	if ((modifiers & WLR_MODIFIER_ALT) && event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+	if ((modifiers & WLR_MODIFIER_LOGO) && event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
 
 		for (int i = 0; i < nsyms; i++) {
 			handled = handle_keybinding(syms[i]);
@@ -567,8 +566,7 @@ static void keyboard_handle_key(
 	if (!handled) {
 		
 		wlr_seat_set_keyboard(seat, keyboard->wlr_keyboard);
-		wlr_seat_keyboard_notify_key(seat, event->time_msec,
-			event->keycode, event->state);
+		wlr_seat_keyboard_notify_key(seat, event->time_msec, event->keycode, event->state);
 	}
 }
 
@@ -590,8 +588,12 @@ static void server_new_keyboard(struct wlr_input_device *device) {
 	keyboard->wlr_keyboard = wlr_keyboard;
 
 	struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-	struct xkb_keymap *keymap = xkb_keymap_new_from_names(context, NULL,
-		XKB_KEYMAP_COMPILE_NO_FLAGS);
+
+	struct xkb_rule_names names = {
+		.options = "caps:super"
+	};
+
+	struct xkb_keymap *keymap = xkb_keymap_new_from_names(context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
 
 	wlr_keyboard_set_keymap(wlr_keyboard, keymap);
 	xkb_keymap_unref(keymap);
