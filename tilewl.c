@@ -60,7 +60,6 @@ struct server_toplevel {
 	struct wlr_xwayland_surface *xwayland_surface;
 	struct wl_listener associate;
 	struct wl_listener dissociate;
-	struct wl_listener xwayland_destroy;
 };
 
 struct server_popup {
@@ -723,6 +722,7 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
 	{
 		unfocus_toplevel();
 	}
+	
 	wl_list_remove(&toplevel->link);
 
 	tile(toplevel->output);
@@ -742,12 +742,20 @@ static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
 	
 	struct server_toplevel *toplevel = wl_container_of(listener, toplevel, destroy);
 
-	wl_list_remove(&toplevel->map.link);
-	wl_list_remove(&toplevel->unmap.link);
-	wl_list_remove(&toplevel->commit.link);
-	wl_list_remove(&toplevel->destroy.link);
-	wl_list_remove(&toplevel->request_fullscreen.link);
+	if(toplevel->xwayland_surface)
+	{
+		wl_list_remove(&toplevel->associate.link);
+		wl_list_remove(&toplevel->dissociate.link);
+	}
+	else
+	{
+		wl_list_remove(&toplevel->map.link);
+		wl_list_remove(&toplevel->unmap.link);
+		wl_list_remove(&toplevel->commit.link);
+		wl_list_remove(&toplevel->request_fullscreen.link);
+	}
 
+	wl_list_remove(&toplevel->destroy.link);
 	free(toplevel);
 }
 
@@ -780,8 +788,10 @@ static void server_new_xdg_toplevel(struct wl_listener *listener, void *data)
 
 	toplevel->map.notify = xdg_toplevel_map;
 	wl_signal_add(&xdg_toplevel->base->surface->events.map, &toplevel->map);
+
 	toplevel->unmap.notify = xdg_toplevel_unmap;
 	wl_signal_add(&xdg_toplevel->base->surface->events.unmap, &toplevel->unmap);
+
 	toplevel->commit.notify = xdg_toplevel_commit;
 	wl_signal_add(&xdg_toplevel->base->surface->events.commit, &toplevel->commit);
 
@@ -860,18 +870,6 @@ static void xwayland_dissociate(struct wl_listener *listener, void *data)
 	}
 }
 
-
-static void xwayland_destroy(struct wl_listener *listener, void *data) 
-{
-	struct server_toplevel *toplevel = wl_container_of(listener, toplevel, xwayland_destroy);
-
-	wl_list_remove(&toplevel->associate.link);
-	wl_list_remove(&toplevel->dissociate.link);
-	wl_list_remove(&toplevel->xwayland_destroy.link);
-
-	free(toplevel);
-}
-
 static void server_new_xwayland_surface(struct wl_listener *listener, void *data)
 {
 	struct wlr_xwayland_surface *xwayland_surface = data;
@@ -891,8 +889,8 @@ static void server_new_xwayland_surface(struct wl_listener *listener, void *data
 	toplevel->dissociate.notify = xwayland_dissociate;
 	wl_signal_add(&xwayland_surface->events.dissociate, &toplevel->dissociate);
 
-	toplevel->xwayland_destroy.notify = xwayland_destroy;
-	wl_signal_add(&xwayland_surface->events.destroy, &toplevel->xwayland_destroy);
+	toplevel->destroy.notify = xdg_toplevel_destroy;
+	wl_signal_add(&xwayland_surface->events.destroy, &toplevel->destroy);
 }
 
 static void pointer_constraint_destroy(struct wl_listener *listener, void *data)
