@@ -356,7 +356,7 @@ static void server_cursor_frame(struct wl_listener *listener, void *data) {
 	wlr_seat_pointer_notify_frame(seat);
 }
 
-static int count_tiles(struct server_output *output)
+static void tile(struct server_output *output)
 {
 	int n = 0;
 
@@ -378,13 +378,6 @@ static int count_tiles(struct server_output *output)
 		}
 	}
 
-	return n;
-}
-
-static void tile(struct server_output *output)
-{
-	int n = count_tiles(output);
-
 	if (n == 0)
 	{
 		return;
@@ -400,7 +393,7 @@ static void tile(struct server_output *output)
 	int width = output->wlr_output->width / n;
 
 	int i = 0;
-	struct server_toplevel *toplevel;
+	
 	wl_list_for_each(toplevel, &toplevels, link)
 	{
 		if(toplevel->output != output) continue;
@@ -417,6 +410,7 @@ static void tile(struct server_output *output)
 		{
 			wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
 		}
+
 		wlr_scene_node_set_position(&toplevel->scene_tree->node, output_x + width * i, output_y);
 		i++;
 	}
