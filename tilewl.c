@@ -94,7 +94,6 @@ static struct wl_listener new_xdg_popup;
 static struct wl_list toplevels;
 
 static struct wl_listener cursor_motion;
-static struct wl_listener cursor_motion_absolute;
 static struct wl_listener cursor_button;
 static struct wl_listener cursor_axis;
 static struct wl_listener cursor_frame;
@@ -331,12 +330,6 @@ static void server_cursor_motion(struct wl_listener *listener, void *data)
 		event->unaccel_dy
 	);
 
-	process_cursor_motion(event->time_msec);
-}
-
-static void server_cursor_motion_absolute(struct wl_listener *listener, void *data) {
-	struct wlr_pointer_motion_absolute_event *event = data;
-	wlr_cursor_warp_absolute(cursor, &event->pointer->base, event->x, event->y);
 	process_cursor_motion(event->time_msec);
 }
 
@@ -1020,9 +1013,6 @@ int main(int argc, char *argv[]) {
 	cursor_motion.notify = server_cursor_motion;
 	wl_signal_add(&cursor->events.motion, &cursor_motion);
 
-	cursor_motion_absolute.notify = server_cursor_motion_absolute;
-	wl_signal_add(&cursor->events.motion_absolute, &cursor_motion_absolute);
-
 	cursor_button.notify = server_cursor_button;
 	wl_signal_add(&cursor->events.button, &cursor_button);
 
@@ -1097,7 +1087,6 @@ int main(int argc, char *argv[]) {
 	wl_list_remove(&new_xdg_popup.link);
 
 	wl_list_remove(&cursor_motion.link);
-	wl_list_remove(&cursor_motion_absolute.link);
 	wl_list_remove(&cursor_button.link);
 	wl_list_remove(&cursor_axis.link);
 	wl_list_remove(&cursor_frame.link);
