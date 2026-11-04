@@ -363,9 +363,9 @@ static void tile(struct server_output *output)
 	struct server_toplevel *toplevel;
 	wl_list_for_each(toplevel, &toplevels, link)
 	{
-		if(toplevel->xwayland_surface && toplevel->xwayland_surface->override_redirect) continue;
-
 		if(toplevel->output != output) continue;
+
+		if(toplevel->xwayland_surface && toplevel->xwayland_surface->override_redirect) continue;
 		
 		if(toplevel->workspace == output->active_workspace)
 		{
@@ -393,6 +393,8 @@ static void tile(struct server_output *output)
 	int width = output->wlr_output->width / n;
 
 	int i = 0;
+
+	
 	
 	wl_list_for_each(toplevel, &toplevels, link)
 	{
@@ -400,11 +402,21 @@ static void tile(struct server_output *output)
 	
 		if(toplevel->workspace != output->active_workspace) continue;
 
-		if(toplevel->xwayland_surface && toplevel->xwayland_surface->override_redirect) continue;
+		if(toplevel->xwayland_surface && toplevel->xwayland_surface->override_redirect) 
+		{
+			struct wlr_xwayland_surface *parent = toplevel->xwayland_surface->parent;
+
+			if(parent)
+			{
+				wlr_scene_node_set_position(&toplevel->scene_tree->node, parent->x + toplevel->xwayland_surface->x, parent->y + toplevel->xwayland_surface->y);
+			}
+				
+			continue;
+		}
 
 		if(toplevel->xwayland_surface)
 		{
-			wlr_xwayland_surface_configure(toplevel->xwayland_surface, width * i, output_y, width, height);
+			wlr_xwayland_surface_configure(toplevel->xwayland_surface, output_x + width * i, output_y, width, height);
 		}
 		else
 		{
