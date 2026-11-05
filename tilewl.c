@@ -395,17 +395,7 @@ static void tile(struct server_output *output)
 	
 		if(toplevel->workspace != output->active_workspace) continue;
 
-		if(toplevel->xwayland_surface && toplevel->xwayland_surface->override_redirect) 
-		{
-			struct wlr_xwayland_surface *parent = toplevel->xwayland_surface->parent;
-
-			if(parent)
-			{
-				wlr_scene_node_set_position(&toplevel->scene_tree->node, parent->x + toplevel->xwayland_surface->x, parent->y + toplevel->xwayland_surface->y);
-			}
-				
-			continue;
-		}
+		if(toplevel->xwayland_surface && toplevel->xwayland_surface->override_redirect) continue;
 
 		if(toplevel->xwayland_surface)
 		{
@@ -711,6 +701,13 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 	struct server_toplevel *toplevel = wl_container_of(listener, toplevel, map);
 
 	wl_list_insert(&toplevels, &toplevel->link);
+	
+	if(toplevel->xwayland_surface && toplevel->xwayland_surface->override_redirect)
+	{
+		wlr_scene_node_set_position(&toplevel->scene_tree->node, toplevel->xwayland_surface->x, toplevel->xwayland_surface->y);
+		return;
+	}
+
 	focus_toplevel(toplevel);
 	tile(toplevel->output);
 }
@@ -725,6 +722,8 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
 	}
 	
 	wl_list_remove(&toplevel->link);
+
+	if(toplevel->xwayland_surface && toplevel->xwayland_surface->override_redirect) return;
 
 	tile(toplevel->output);
 }
