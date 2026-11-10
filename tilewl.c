@@ -31,6 +31,7 @@
 #include <wlr/types/wlr_ext_image_capture_source_v1.h>
 
 #include <wlr/types/wlr_xdg_output_v1.h>
+#include <wlr/types/wlr_viewporter.h>
 
 #include <wlr/xwayland.h>
 
@@ -1079,6 +1080,7 @@ int main(int argc, char *argv[]) {
 	wlr_xdg_output_manager_v1_create(wl_display, output_layout);
 
 	wlr_cursor_set_xcursor(cursor, cursor_mgr, "default");
+	wlr_viewporter_create(wl_display);
 
 	wl_display_run(wl_display);
 
