@@ -34,6 +34,7 @@
 #include <wlr/types/wlr_viewporter.h>
 
 #include <wlr/xwayland.h>
+#include <wlr/types/wlr_xdg_decoration_v1.h>
 
 struct server_output {
 	struct wl_list link;
@@ -90,6 +91,14 @@ struct layer_surface {
 	struct wl_listener destroy;
 };
 
+//deco manager remove if dota 2 fixes the protocol violation
+struct xdg_decoration {
+	struct wlr_xdg_toplevel_decoration_v1 *decoration;
+	struct wl_listener request_mode;
+	struct wl_listener destroy;
+};
+
+
 static struct wl_listener new_xdg_toplevel;
 static struct wl_listener new_xdg_popup;
 static struct wl_list toplevels;
@@ -129,6 +138,42 @@ static struct wl_listener new_layer_surface;
 
 //xwayland
 static struct wl_listener new_xwayland_surface;
+
+//deco manager
+static struct wl_listener new_xdg_decoration;
+
+static void xdg_decoration_handle_request_mode(struct wl_listener *listener, void *data)
+{
+	struct xdg_decoration *decoration = wl_container_of(listener, decoration, request_mode);
+
+	if (decoration->decoration->toplevel->base->initialized) {
+		wlr_xdg_toplevel_decoration_v1_set_mode(decoration->decoration, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+	}
+}
+
+static void xdg_decoration_handle_destroy(struct wl_listener *listener, void *data)
+{
+	struct xdg_decoration *decoration = wl_container_of(listener, decoration, destroy);
+
+	wl_list_remove(&decoration->request_mode.link);
+	wl_list_remove(&decoration->destroy.link);
+
+	free(decoration);
+}
+
+static void server_new_xdg_decoration(struct wl_listener *listener, void *data)
+{
+	struct wlr_xdg_toplevel_decoration_v1 *wlr_decoration = data;
+
+	struct xdg_decoration *decoration = calloc(1, sizeof(*decoration));
+	decoration->decoration = wlr_decoration;
+
+	decoration->request_mode.notify = xdg_decoration_handle_request_mode;
+	wl_signal_add(&wlr_decoration->events.request_mode, &decoration->request_mode);
+
+	decoration->destroy.notify = xdg_decoration_handle_destroy;
+	wl_signal_add(&wlr_decoration->events.destroy, &decoration->destroy);
+}
 
 static void unfocus_toplevel()
 {
@@ -1081,6 +1126,12 @@ int main(int argc, char *argv[]) {
 
 	wlr_cursor_set_xcursor(cursor, cursor_mgr, "default");
 	wlr_viewporter_create(wl_display);
+
+	//deco manager delete if dota 2 fixes the protocol non compliance
+	struct wlr_xdg_decoration_manager_v1 *decoration_manager = wlr_xdg_decoration_manager_v1_create(wl_display);
+
+	new_xdg_decoration.notify = server_new_xdg_decoration;
+	wl_signal_add(&decoration_manager->events.new_toplevel_decoration, &new_xdg_decoration);
 
 	wl_display_run(wl_display);
 
