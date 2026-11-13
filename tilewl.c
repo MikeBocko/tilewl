@@ -425,7 +425,6 @@ static void tile(struct server_output *output)
 	struct wlr_output_layout_output *lo = wlr_output_layout_get(output_layout, output->wlr_output);
 
 	int output_x = lo->x;
-	int output_y = lo->y;
 
 	
 	int height = output->wlr_output->height;
@@ -445,14 +444,14 @@ static void tile(struct server_output *output)
 
 		if(toplevel->xwayland_surface)
 		{
-			wlr_xwayland_surface_configure(toplevel->xwayland_surface, output_x + width * i, output_y, width, height);
+			wlr_xwayland_surface_configure(toplevel->xwayland_surface, output_x + width * i, 0, width, height);
 		}
 		else
 		{
 			wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
 		}
 
-		wlr_scene_node_set_position(&toplevel->scene_tree->node, output_x + width * i, output_y);
+		wlr_scene_node_set_position(&toplevel->scene_tree->node, output_x + width * i, 0);
 		i++;
 	}
 	process_cursor_motion(0);
@@ -497,13 +496,12 @@ static void switch_output()
 			struct wlr_output_layout_output *lo = wlr_output_layout_get(output_layout, next_output->wlr_output);
 
 			int output_x = lo->x;
-			int output_y = lo->y;
 
 			int width = next_output->wlr_output->width;
 			int height = next_output->wlr_output->height;
 
 
-			wlr_cursor_warp(cursor, NULL, output_x + width/2, output_y + height/2);
+			wlr_cursor_warp(cursor, NULL, output_x + width/2, height/2);
 			process_cursor_motion(0);
 			return;
 		}
@@ -1124,6 +1122,8 @@ int main(int argc, char *argv[]) {
 	wlr_xdg_output_manager_v1_create(wl_display, output_layout);
 
 	wlr_cursor_set_xcursor(cursor, cursor_mgr, "default");
+	wlr_cursor_warp(cursor, NULL, 2880, 540);
+
 	wlr_viewporter_create(wl_display);
 
 	//deco manager delete if dota 2 fixes the protocol non compliance
