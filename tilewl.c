@@ -553,7 +553,7 @@ static bool handle_keybinding(xkb_keysym_t sym)
 		case XKB_KEY_q:				spawn(term);		break;
 		case XKB_KEY_e:				spawn(browser); 	break;
 		case XKB_KEY_s:				spawn(steam); 		break;
-		case XKB_KEY_Delete:		spawn(snip); 		break;
+		case XKB_KEY_x:				spawn(snip); 		break;
 
 		case XKB_KEY_c:				kill_top_level();	break;
 
@@ -570,7 +570,7 @@ static bool handle_keybinding(xkb_keysym_t sym)
 		case XKB_KEY_percent: 		switch_toplevel_workspace(5); break;
 
 		case XKB_KEY_Tab:			switch_output(); break;
-		case XKB_KEY_grave:			switch_toplevel_output(); break;
+		case XKB_KEY_Escape:		switch_toplevel_output(); break;
 
 		default: return false;
 	}
